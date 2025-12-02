@@ -19,7 +19,7 @@ dados = dados_unsort[order(dados_unsort$id), ]
 #Data structure
 
 dados$bmi = as.numeric(dados$bmi)
-
+dados$age=as.integer(dados$age)
 unique(dados$gender)
 dados$gender = factor(dados$gender, levels = c("Female", "Male", "Other"))
 unique(dados$hypertension)
@@ -168,6 +168,51 @@ gt(tbl) %>%
 ########################
 #Statistical inference #
 ########################
+#teste do qui-quadrado (H1: Existe associação entre as variáveis)
+table(dados$hypertension, dados$stroke)
+chisq.test(dados$hypertension, dados$stroke)
+table(dados$gender, dados$stroke)
+chisq.test(dados$gender, dados$stroke)#aqui acho que devemos usar o fisher Test
+table(dados$heart_disease, dados$stroke)
+chisq.test(dados$heart_disease, dados$stroke)
+table(dados$ever_married, dados$stroke)
+chisq.test(dados$ever_married, dados$stroke)
+table(dados$work_type, dados$stroke)
+chisq.test(dados$work_type, dados$stroke)#aqui acho que devemos usar o fisher Test
+table(dados$Residence_type, dados$stroke)
+chisq.test(dados$Residence_type, dados$stroke)
+table(dados$smoking_status, dados$stroke)
+chisq.test(dados$smoking_status, dados$stroke)
+
+#Testar normalidade
+shapiro.test(dados$age[dados$stroke == "Yes"])
+shapiro.test(dados$age[dados$stroke == "No"])
+
+shapiro.test(dados$bmi[dados$stroke == "Yes"])
+shapiro.test(dados$bmi[dados$stroke == "No"])
+
+shapiro.test(dados$avg_glucose_level[dados$stroke == "Yes"])
+shapiro.test(dados$avg_glucose_level[dados$stroke == "No"])
+#nao ha nenhuma normalidade--> fazer wilcox
+
+wilcox.test(age ~ stroke, data = dados)
+wilcox.test(bmi ~ stroke, data = dados)
+wilcox.test(avg_glucose_level ~ stroke, data = dados)
+#para todos deu: diferença estatisticamente significativa entre os grupos (com e sem AVC).
+
+
+modelo = glm(stroke ~ age + bmi + avg_glucose_level +
+                hypertension + heart_disease + gender +
+                ever_married + work_type + Residence_type +
+                smoking_status,
+              data = dados, family = binomial)
+
+summary(modelo)
+exp(coef(modelo)) #da os OR (oddRatio)
+exp(confint(modelo)) #da o IC
+#a idade, o Bmi, e a glucose,hipertensão e o heartDisease (no limite) aumenta a probabilidade de AVC.
+#no caso da hypertensionYEs, Pessoas com hipertensão têm 1.77 vezes mais odds 
+#(quase o dobro) de ter stroke comparado com quem não tem hipertensão, mantendo as outras variáveis constantes.
 
 
 ########################
@@ -179,6 +224,7 @@ gt(tbl) %>%
 ########################################
 #Linear and Logistic Regression Models #
 ########################################
+
 
 
 

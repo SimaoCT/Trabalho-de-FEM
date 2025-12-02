@@ -3,7 +3,9 @@
 ############################
 library(readr)
 library(ggplot2)
-
+library(dplyr)
+library(tidyr)
+library(gt)
 
 
 
@@ -44,9 +46,120 @@ str(dados)
 ############################
 
 
+##Stroke~Gender
+
+ggplot(dados, aes(x=gender, fill=stroke)) +
+  geom_bar(binwidth=5, position="fill") +
+  labs(title="Stroke status across gender", x="Gender", y="Count") +
+  theme_classic()+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("#1a80bb", "#ea801c"), name="Stroke Status")
+
+
+# Summary table Stroke~Gender
+tbl <- dados %>%
+  count(stroke, gender) %>%           
+  pivot_wider(names_from = gender, values_from = n, values_fill = 0) %>%
+  select(stroke, Female, Male, Other) %>%
+  mutate(Total = rowSums(across(where(is.numeric)))) %>% 
+  bind_rows(
+    summarise(.,
+              stroke = "Total",
+              across(where(is.numeric), sum))
+  )
+
+gt(tbl) %>%
+  
+  # ---- STROKE ROW GROUP (like the example) ----
+tab_row_group(
+  group = md("**Stroke**"),    ### <-- Stroke title appears ABOVE "No" and "Yes"
+  rows = stroke %in% c("No", "Yes")
+) %>%
+  
+  tab_header(title = " ") %>% 
+  
+  cols_label(
+    stroke = "",                 # keep empty: stroke values appear in stub
+    Female = "Female",
+    Male   = "Male",
+    Other = "Other",
+    Total  = "Total"
+  ) %>%
+  
+  tab_spanner(
+    label = md("**Gender**"),
+    columns = c(Female, Male,Other, Total)
+  ) %>%
+  
+  # ---- ONLY BOLD THE TOTAL COLUMN LABEL ----
+  tab_style(
+   style = cell_text(weight = "bold"),
+   locations = cells_column_labels(columns = Total)
+  ) %>%
+  
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(
+      columns = stroke,   # só a coluna do stub
+      rows = stroke == "Total"
+    )
+  ) %>%
+  
+  fmt_number(columns = where(is.numeric), decimals = 0)
 
 
 
+
+##Stroke~Hypertension
+
+ggplot(dados, aes(x=hypertension, fill=stroke)) +
+  geom_bar(binwidth=5, position="fill") +
+  labs(title="Stroke status and hypertension", x="Hypertension", y="Count") +
+  theme_classic()+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("#1a80bb", "#ea801c"), name="Stroke Status")
+
+# Summary table Stroke~Hypertension
+gt(tbl) %>%
+  tab_row_group(
+    group = md("**Hypertension**"),    
+    rows = stroke %in% c("No", "Yes")
+  ) %>%
+  tab_header(title = " ") %>% 
+  cols_label(
+    stroke = "",
+    No = "No",
+    Yes = "Yes",
+    Total = "Total"
+  ) %>%
+  tab_spanner(
+    label = md("**Hypertension**"),
+    columns = c(No, Yes, Total)
+  ) %>%
+  # BOLD TOTAL COLUMN
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels(columns = Total)
+  ) %>%
+  # BOLD ONLY THE WORD "Total" IN THE STUB COLUMN
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(
+      columns = stroke,
+      rows = stroke == "Total"
+    )
+  ) %>%
+  # Aumentar espaçamento entre palavras nos cabeçalhos
+  tab_style(
+    style = cell_text(word_spacing = px(8)),  # ajusta o valor conforme gostes
+    locations = cells_column_labels(columns = everything())
+  ) %>%
+  # Aumentar espaçamento entre palavras na coluna de rótulos
+  tab_style(
+    style = cell_text(word_spacing = px(8)),
+    locations = cells_body(columns = stroke)
+  ) %>%
+  fmt_number(columns = where(is.numeric), decimals = 0)
 
 
 

@@ -367,5 +367,74 @@ a2=ggplot(subset(dados,stroke=="Yes"),aes(x=avg_glucose_level))+
 
 (a1+a2)+plot_layout(nrow=2) #isto permite-nos ver se as distribuições são minimamente semelhantes
 
+########################################
+#Linear and Logistic Regression Models #
+########################################
+correlation_matrix <- dados %>%
+  select(age, bmi, avg_glucose_level) %>%
+  cor(use = "complete.obs")
+
+correlation_matrix
+#age vs bmi
+modelo_BMI_age <- lm(bmi ~ age, data = dados)
+summary(modelo_BMI_age)
+
+ggplot(dados, aes(x = age, y = bmi)) +
+  geom_point(alpha=0.4) +
+  geom_smooth(method="lm", se=TRUE) +
+  labs(x = "Age (years)", y = "BMI",
+       title = "Relationship between BMI and Age") +
+  theme_classic()
+#glucose vs age
+modelo_glucose_age <- lm(avg_glucose_level ~ age, data = dados)
+summary(modelo_glucose_age)
+
+ggplot(dados, aes(x = age, y = avg_glucose_level)) +
+  geom_point(alpha=0.4) +
+  geom_smooth(method="lm", se=TRUE) +
+  labs(x = "Age (years)", y = "Average Glucose Level",
+       title = "Relationship between Blood Glucose and Age") +
+  theme_classic()
+
+#glucose vs bmi
+modelo_bmi_glucose <- lm(bmi ~ avg_glucose_level, data = dados)
+summary(modelo_bmi_glucose)
+
+ggplot(dados, aes(x = avg_glucose_level, y = bmi)) +
+  geom_point(alpha=0.4) +
+  geom_smooth(method="lm", se=TRUE) +
+  labs(x = "Average Glucose Level", y = "BMI",
+       title = "Relationship between Blood Glucose and Age") +
+  theme_classic()
+
+
+#Esses gráficos não são para prever nada, são para verificar se a regressão linear é estatisticamente válida
+par(mfrow = c(2,2))
+plot(modelo_BMI_age)
+plot(modelo_glucose_age)
+plot(modelo_bmi_glucose)
+par(mfrow = c(1,1))
+
+#IC dos coeficientes
+confint(modelo_BMI_age)
+confint(modelo_glucose_age)
+confint(modelo_bmi_glucose)
+
+#tabelas bonitas das informações
+library(broom)
+library(gt)
+
+tidy(modelo_BMI_age, conf.int = TRUE) %>% 
+  gt() %>% 
+  tab_header(title = "Regression BMI ~ Age")
+
+tidy(modelo_glucose_age, conf.int = TRUE) %>% 
+  gt() %>% 
+  tab_header(title = "Regression Glucose ~ Age")
+
+tidy(modelo_bmi_glucose, conf.int = TRUE) %>% 
+  gt() %>% 
+  tab_header(title = "Regression BMI ~ Glucose")
 
 ```
+

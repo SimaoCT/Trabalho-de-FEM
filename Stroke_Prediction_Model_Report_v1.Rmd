@@ -22,7 +22,7 @@ library(tidyr)
 library(gt)
 library(scales)
 library(patchwork)
-
+library(broom)
 ##############################
 # Download and data cleaning #
 ##############################
@@ -421,8 +421,6 @@ confint(modelo_glucose_age)
 confint(modelo_bmi_glucose)
 
 #tabelas bonitas das informações
-library(broom)
-library(gt)
 
 tidy(modelo_BMI_age, conf.int = TRUE) %>% 
   gt() %>% 
@@ -437,4 +435,5 @@ tidy(modelo_bmi_glucose, conf.int = TRUE) %>%
   tab_header(title = "Regression BMI ~ Glucose")
 
 ```
+
 

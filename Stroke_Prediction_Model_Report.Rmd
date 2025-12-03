@@ -21,6 +21,7 @@ library(dplyr)
 library(tidyr)
 library(gt)
 library(scales)
+library(patchwork)
 
 ##############################
 # Download and data cleaning #
@@ -55,18 +56,110 @@ dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("No", "Yes"))
 
 # Exploratory Data Analysis
 
-```{r fig.cap="Figure 1: cenas", echo=FALSE, fig.align='center', results='asis', warning = FALSE}
+```{r fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="100%"}
 #Stroke~Gender
 
-
-ggplot(dados, aes(x=gender, fill=stroke)) +
+p1 = ggplot(dados, aes(x=gender, fill=stroke)) +
   geom_bar(position="fill") +
-  labs(title="Stroke status across gender", x="Gender", y="Count") +
-  theme_classic(base_size = 12) +
-  theme(legend.position = "right", 
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 9))+
+  labs(x="Gender", y="Proportion") +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+
+#Stroke~Hypertension
+
+p2 = ggplot(dados, aes(x=hypertension, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Hypertension", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
   scale_y_continuous(labels = scales::percent)+
-  scale_fill_manual(values=c("#1a80bb", "#ea801c"), name="Stroke Status")
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+
+#Stroke~heart_disease
+p3 = ggplot(dados, aes(x=heart_disease, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Heart Disease", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+#Stroke~ever married
+p4 = ggplot(dados, aes(x=ever_married, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="The patient ever married", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+#Stroke~work type
+p5 = ggplot(dados, aes(x=work_type, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Work Type", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # <-- rótulos inclinados
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")+
+  scale_x_discrete(labels = c("Private", "Self-employed", "Government\nJob", "Children", "Never\nWorked"))
+
+#Stroke~Residence type
+p6 = ggplot(dados, aes(x=Residence_type, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Residence Type", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),      # título dos eixos
+    axis.text = element_text(size = 8),        # números nos eixos
+    legend.title = element_text(size = 9),     # título da legenda
+    legend.text = element_text(size = 7),      # texto da legenda
+    plot.title = element_text(size = 12)       # título do gráfico
+  )+
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+
+combine = (p1 + p2 + p3)/(p4 + p5 + p6) + plot_annotation(tag_levels = 'A') & theme(legend.position = 'bottom')
+combine
+
 ```
+
+
+
+
 

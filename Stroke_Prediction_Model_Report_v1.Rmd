@@ -486,6 +486,115 @@ tidy(modelo_bmi_glucose, conf.int = TRUE) %>%
   gt() %>% 
   tab_header(title = "Regression BMI ~ Glucose")
 
+
+
+#Logistic regression final data
+dados2 <- dados %>%
+  filter(gender != "Other",
+         work_type != "Never_worked",
+         work_type != "Children") %>%
+  na.omit()
+  #Serviu para excluir categorias raras, pois mo predict dava um valor menor de rows que os dados originais
+
+#Logistic regression model
+library(dplyr)
+library(car)              # VIF
+library(broom)            # tidy model output
+library(pROC)             # ROC curve
+library(ResourceSelection) # Hosmer-Lemeshow test
+
+modelo = glm(stroke ~ age + bmi + avg_glucose_level +
+                hypertension + heart_disease + gender +
+                ever_married + work_type + Residence_type +
+                smoking_status,
+              data = dados2, family = binomial('logit'))
+summary(modelo)
+  #o modelo vonverge de forma estável e apresenta significância global adequada
+
+#ORs and CI
+
+OR_table <- broom::tidy(modelo, exponentiate = TRUE, conf.int = TRUE)
+OR_table
+  #Com base nos p-values < 0.05 verificamos que as variáveis significativas são a age, hypertension = yes, avg_glucose_level
+
+  # Age -> A cada ano o risco de sofrer AVC aumenta ~7-8%
+  #A idade é o fator de risco mais forte e estatisticamente mais robusto do modelo.
+
+  # hypertension -> Hipertensos têm ~77% mais risco
+
+  # avg_glucose_level -> Cada aumento de 1 unidade no nível médio de glucose aumenta o risco de AVC em 0.47%.
+
+  #As restantes variáveis não significativas apesar de serem clinicamente relevantes, neste conjunto de dados não apresentaram efeito estatisticamente significativo, possivelmente devido a variabilidade alta, multicolinearidade, ou baixa frequência dos casos positivos (AVC).
+
+#Variance Inflation Factor
+
+
+vif(modelo)
+
+  #Como todos os valores de GVIF ajustado estão entre 1.00 e 1.12 verificamos que não existe qualquer colinearidade relevante entre as variáveis no modelo.
+
+  #O modelo é estatisticamente estável e não há risco de que relações artificiais entre variáveis distorçam os coeficientes.
+
+#ROC curve & AUC
+
+
+prob <- predict(modelo, type = "response")
+roc_curve <- roc(dados2$stroke, prob)
+
+plot(roc_curve, print.auc = TRUE, col = "blue", main = "ROC Curve – Stroke Model")
+auc_val <- auc(roc_curve)
+auc_val #0.8288
+ci(auc_val)
+  #O modelo tem boa capacidade discriminatória, ou seja, consegue separar adequadamente grupos com maior e menor risco de AVC.  AUC > 0.8
+
+#Predictions 
+
+prob <- predict(modelo, type = "response")
+pred <- ifelse(prob > 0.5, "Yes", "No")
+pred <- factor(pred, levels = c("No","Yes")
+               
+#Confusion Matrix
+
+table_pred <- table(Predicted = pred, Actual = dados2$stroke)
+table_pred
+
+accuracy <- sum(pred == dados2$stroke) / nrow(dados2)
+
+sensitivity <- table_pred["Yes", "Yes"] /
+  sum(table_pred[, "Yes"])
+
+specificity <- table_pred["No", "No"] /
+  sum(table_pred[, "No"])
+
+accuracy #0.946
+ #Alta accuracy, mas isso ocorre porque o dataset é muito desbalanceado. Prever “não teve AVC” já acerta a maior parte dos indivíduos
+
+sensitivity #0.0055
+ #Muito baixa, o modelo tem dificuldade em identificar doentes que realmente tiveram AVC. Típico em datasets com classes desbalanceadas.
+
+specificity #0.9996
+ #O modelo identifica muito bem os indivíduos sem AVC.
+
+
+
+#Teste ao ajustamento
+
+modelo2 = glm(stroke ~ age + avg_glucose_level +
+                hypertension,
+              data = dados2, family = binomial('logit'))
+
+hoslem.test(dados2$stroke,fitted(modelo2))
+
+  #Como p-value < 0.05, sugere falta de ajuste estatístico por parte do modelo. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
+
+#Teste da razão de verossimilhança
+
+library(lmtest)
+modelo_0=glm(stroke~1,family=binomial('logit'),data = dados2)
+lrtest(modelo_0, modelo) 
+
+  #Este resultado permite rejeitar a hipótese nula de que todos os coeficientes de regressão são iguais a zero, confirmando que o conjunto de variáveis independentes selecionado (idade, glicose, hipertensão, etc.) contribui significativamente para a predição da ocorrência de AVC em comparação com um modelo sem preditores
 ```
+
 
 

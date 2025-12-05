@@ -1,0 +1,587 @@
+---
+title: "Stroke Prediction Model Report"
+author: "Simão Tavares | João Cordeiro | Tomás Matias | Rodrigo Curto"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: flatly
+    df_print: paged
+fontsize: 11pt
+---
+
+```{r Libraries and Data Cleaning, echo=FALSE, include=FALSE}
+############################
+# Load necessary libraries #
+############################
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gt)
+library(scales)
+library(patchwork)
+library(broom)
+library(flextable)
+library(QuantPsyc)
+library(gtsummary)
+library(lmtest)
+library(car)
+library(psych)
+library(GGally)
+library(corrplot)
+##############################
+# Download and data cleaning #
+##############################
+dados_unsort <- read_csv("healthcare-dataset-stroke-data.csv", na = c("","NA","N/A", "Unknown"))
+dados_unsort$id = as.numeric(dados_unsort$id)
+dados_unsort=dados_unsort[dados_unsort$gender != "Other",] #remove 1 observação. Como só uma pessoa tinha este género, não havia uma amostra representativa de pessoas desta categoria com e sem AVCs, logo, posteriormente, os modelos poderiam ser afetados
+dados = dados_unsort[order(dados_unsort$id), ]
+
+#Data structure
+
+dados$bmi = as.numeric(dados$bmi)
+dados$age=as.integer(dados$age)
+unique(dados$gender)
+dados$gender = factor(dados$gender, levels = c("Female", "Male"))
+unique(dados$hypertension)
+dados$hypertension = factor(dados$hypertension, levels = c(0, 1), labels = c("No", "Yes"))
+unique(dados$heart_disease)
+dados$heart_disease = factor(dados$heart_disease, levels = c(0, 1), labels = c("No", "Yes"))
+unique(dados$ever_married)
+dados$ever_married = factor(dados$ever_married, levels = c("No", "Yes"))
+unique(dados$work_type)
+dados$work_type = factor(dados$work_type, levels = c("Private", "Self-employed", "Govt_job", "Children", "Never_worked"))
+unique(dados$Residence_type)
+dados$Residence_type = factor(dados$Residence_type, levels = c("Urban", "Rural"))
+unique(dados$smoking_status)
+dados$smoking_status = factor(dados$smoking_status, levels = c("never smoked", "formerly smoked", "smokes")) # Unknown means that the information is unavailable for this patient
+unique(dados$stroke)
+dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("No", "Yes"))
+
+
+```
+
+# Exploratory Data Analysis
+
+## Qualitative Variables
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~Gender
+
+ggplot(dados, aes(x=gender, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Gender", y="Proportion") +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico  
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+# Summary table Stroke~Gender
+
+tbl_val=table(dados$stroke,dados$gender)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Gender","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Gender",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$Stroke),]
+colnames(new_table)=c("Stroke","Female","Male","Other")
+new_table$Total=rowSums(new_table[,c("Female","Male","Other")])
+somas_col=colSums(new_table[,c("Female","Male","Other","Total")])
+linha_total=data.frame(Stroke="Total",Female=somas_col["Female"],
+                       Male=somas_col["Male"],Other=somas_col["Other"],
+                       Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Gender",""),
+                           colwidths=c(1,3,1))
+final_table=align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+```
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~Hypertension
+
+ggplot(dados, aes(x=hypertension, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Hypertension", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico  
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+# Summary table Stroke~Hypertension
+
+tbl_val=table(dados$stroke,dados$hypertension)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Hypertension","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Hypertension",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$Stroke),]
+colnames(new_table)=c("Stroke","No","Yes")
+new_table$Total=rowSums(new_table[,c("No","Yes")])
+somas_col=colSums(new_table[,c("No","Yes","Total")])
+linha_total=data.frame(Stroke="Total",No=somas_col["No"],
+                       Yes=somas_col["Yes"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Hypertension",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+```
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~heart_disease
+
+ggplot(dados, aes(x=heart_disease, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Heart Disease", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico  
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+
+# Summary table Stroke~Heart disease
+
+tbl_val=table(dados$stroke,dados$heart_disease)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Heart Disease","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Heart Disease",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$Stroke),]
+colnames(new_table)=c("Stroke","No","Yes")
+new_table$Total=rowSums(new_table[,c("No","Yes")])
+somas_col=colSums(new_table[,c("No","Yes","Total")])
+linha_total=data.frame(Stroke="Total",No=somas_col["No"],
+                       Yes=somas_col["Yes"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Heart Disease",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+```
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~ever married
+
+ggplot(dados, aes(x=ever_married, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="The patient ever married", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico  
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+# Summary table Stroke~Marriage Status
+
+tbl_val=table(dados$stroke,dados$ever_married)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Ever Married?","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Ever Married?",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$Stroke),]
+colnames(new_table)=c("Stroke","No","Yes")
+new_table$Total=rowSums(new_table[,c("No","Yes")])
+somas_col=colSums(new_table[,c("No","Yes","Total")])
+linha_total=data.frame(Stroke="Total",No=somas_col["No"],
+                       Yes=somas_col["Yes"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Ever Married?",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+```
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~work type
+
+ggplot(dados, aes(x=work_type, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Work Type", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")+
+  scale_x_discrete(labels = c("Private", "Self-employed", "Government\nJob", "Children", "Never\nWorked"))
+
+# Summary table Stroke~Work Type
+
+tbl_val=table(dados$stroke,dados$work_type)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Work Type","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Work Type",
+                  v.names = "Freq",
+                  direction = "wide")
+colnames(new_table)=c("Stroke","Private","Self-employed","Government Job",
+                      "Children","Never Worked")
+new_table$Total=rowSums(new_table[,c("Private","Self-employed","Government Job",
+                                     "Children","Never Worked")])
+somas_col=colSums(new_table[,c("Private","Self-employed","Government Job",
+                               "Children","Never Worked","Total")])
+linha_total=data.frame(Stroke="Total","Private"=somas_col["Private"],
+                       "Self-employed"=somas_col["Self-employed"],
+                       "Government Job"=somas_col["Government Job"],
+                       "Children"=somas_col["Children"],
+                       "Never Worked"=somas_col["Never Worked"],
+                       Total=somas_col["Total"],check.names=F)
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Work type",""),
+                           colwidths=c(1,5,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3,4,5,6)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+```
+
+```{r Qualitative Variables, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Stroke~Residence type
+
+ggplot(dados, aes(x=Residence_type, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Residence Type", y="Proportion") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico
+  scale_y_continuous(labels = scales::percent)+
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+# Summary table Stroke~Residence Type
+
+tbl_val=table(dados$stroke,dados$Residence_type)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("Stroke","Residence Type","Freq")
+new_table=reshape(df_tbl,idvar = "Stroke",
+                  timevar = "Residence Type",
+                  v.names = "Freq",
+                  direction = "wide")
+colnames(new_table)=c("Stroke","Urban","Rural")
+new_table$Total=rowSums(new_table[,c("Urban","Rural")])
+somas_col=colSums(new_table[,c("Urban","Rural","Total")])
+linha_total=data.frame(Stroke="Total","Urban"=somas_col["Urban"],
+                       "Rural"=somas_col["Rural"],
+                       Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Residence type",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="Stroke",part="body")
+final_table=vline(final_table,j=c(1,2,3)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+```
+
+## Absolute Frequencies Tables
+
+## Quantitative Variables
+
+```{r Quantitative Variables, fig.cap="Figure 2: Stroke status across all the quantitative variables", echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+a1=ggplot(dados, aes(x = avg_glucose_level, fill = stroke))+
+  geom_histogram(position = "identity", bins = nclass.Sturges(dados$avg_glucose_level))+
+  labs(title="Stroke status and Average Glucose Level", x="Average Glucose Level", y="Count") +
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Stroke Status")
+
+a2=ggplot(subset(dados,stroke=="Yes"),aes(x=avg_glucose_level))+
+  geom_histogram(fill="forestgreen",bins=nclass.Sturges(dados$avg_glucose_level))+
+  labs(title="Stroke's distribution across Average Glucose Levels intervals", x="Average Glucose Level", y="Count")+
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))       # título do gráfico                   
+
+(a1+a2)+plot_layout(nrow=2) #isto permite-nos ver se as distribuições são minimamente semelhantes
+
+
+```
+
+## Stroke vs Age and Sex
+
+```{r fig.cap="Figure 3: Relationship between Stroke Status and Age and Sex", echo=FALSE, fig.align='center', results='asis', out.width="100%", warning=FALSE}
+
+#Este chunk está a dar um warning, para o ver colocar TRUE
+
+#Stroke~Age and Sex (gender=Other was excluded as there was only one answer of this type, so it is not logical to create a boxplot)
+
+ggplot(subset(dados,gender!="Other"),aes(x=stroke,y=age))+
+  geom_boxplot()+
+  labs(title="Age Distribution for Stroke and Non-Stroke\nPatients per Gender",
+       y="Age",x="Did you have a stroke?")+
+  facet_wrap(~gender)+
+  coord_flip()+
+  theme_classic()+
+  theme(
+    axis.title = element_text(size = 10),                             # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"),       # título do gráfico
+    panel.border=element_rect(color="black",fill=NA,size=1),          # coloca uma linha entre os gráficos
+    panel.spacing=unit(1,"lines"))                                    # para separar os gráficos
+
+```
+
+```{r Avaliação da normalidade das variáveis contínuas e testes de hipóteses para estas variáveis}
+par(mfrow=c(1,3))
+
+#idade
+qqnorm(dados$age, main = "QQ-Plot: Idade")
+qqline(dados$age, col = "red", lwd = 2)
+
+#níveis médios de glucose
+qqnorm(dados$avg_glucose_level, main = "QQ-Plot: Níveis médios de glucose")
+qqline(dados$avg_glucose_level, col = "red", lwd = 2)
+
+#bmi
+qqnorm(dados$bmi, main = "QQ-Plot: IMC")
+qqline(dados$bmi, col = "red", lwd = 2)
+
+par(mfrow=c(1,1))
+```
+
+# Linear Regression Model
+
+This section displays the linear regression (LR) model, which considers the quantitative variables of the dataset. The aim of this model was trying to understand the impact that age and average glucose levels have in BMI. Since this LR model
+
+```{r Linear Model, fig.cap="Figure 1: Stroke status across all the qualitative variables", echo=FALSE, fig.align='center', results='asis', out.width="100%"}
+
+########################################
+#Modelo de Regressão Linear#
+########################################
+
+#Modelo do BMI com diferentes variáveis
+modelo_BMI=lm(bmi~age+avg_glucose_level+gender,data=dados)
+summary(modelo_BMI)
+
+
+#Avaliação do pressuposto de normalidade dos resíduos
+qqnorm(residuals(modelo_BMI),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_BMI),col="red",lwd=3)
+shapiro.test(residuals(modelo_BMI))
+#tanto o gráfico como o teste de Shapiro apontam para a rejeição da hipótese de normalidade dos resíduos. Como a distribuição gráfica no QQ-plot era semelhante a uma função logarítmica, aplicou-se o logaritmo ao BMI, para verificar se, desta forma, os resíduos já seguiam uma distribuição normal
+
+modelo_log=lm(log(bmi)~age+avg_glucose_level+gender,data=dados)
+qqnorm(residuals(modelo_log),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_log),col="red",lwd=3)
+shapiro.test(residuals(modelo_log))
+#apesar do teste de Shapiro apontar para a rejeição da hipótese de normalidade, o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal. A rejeição da normalidade pelo teste de Shapiro pode ser explicada pelo facto do dataset ter um conjunto muito grande de pontos e do teste de Shapiro ser um teste de normalidade com elevada sensibilidade
+
+#Avaliação da homocedasticidade
+bptest(modelo_log)
+plot(fitted(modelo_log),residuals(modelo_log))
+dwtest(modelo_log)
+#a imagem não indica homocestadicidade, mesmo apesar do bptest indicar a sua rejeição?
+
+#Avaliação da multicolinearidade
+vif(modelo_log) #podemos avaliar isto mesmo com variáveis qualitativas?
+#como todos os valores são inferiores a 2, podemos concluir que não existem casos de multicolinearidade e, por isso, não precisamos de alterar as variáveis consideradas
+
+```
+
+```{r}
+
+ggplot(dados, aes(x = age, y = bmi)) +
+  geom_point(alpha=0.4) +
+  geom_smooth(method="lm", se=TRUE) +
+  labs(x = "Age (years)", y = "BMI",
+       title = "Relationship between BMI and Age") +
+  theme_classic()
+
+ggplot(dados, aes(x = avg_glucose_level, y = bmi)) +
+  geom_point(alpha=0.4) +
+  geom_smooth(method="lm", se=TRUE) +
+  labs(x = "Average Glucose Level", y = "BMI",
+       title = "Relationship between Blood Glucose and Age") +
+  theme_classic()
+
+#Esses gráficos não são para prever nada, são para verificar se a regressão linear é estatisticamente válida
+plot(modelo_BMI)
+
+
+#IC dos coeficientes
+confint(modelo_BMI_age)
+
+#tabelas bonitas das informações
+
+tidy(modelo_BMI, conf.int = TRUE) %>% 
+  gt() %>% 
+  tab_header(title = "Regression BMI ~ Age + Average Glucose Levels")
+
+
+#Coeficientes Estandardizados
+#como o nosso modelo tem tanto variáveis quantitativas como qualitativas, não é recomendado o cálculo destes coeficientes, visto que, quando aplicados a variáveis qualitativas são afetados pela frequência de cada categoria dessa variável
+```
+
+```{r}
+"
+#podemos fazer isto mas antes confirmar
+dados_limpos <- na.omit(dados)
+
+# 2. Reajustar o modelo usando esse novo dataset
+modelo_log_clean <- lm(log(bmi) ~ age + avg_glucose_level + gender + smoking_status + work_type, 
+                       data = dados_limpos)
+
+# 3. Agora o stepAIC vai funcionar
+stepAIC(modelo_log_clean)
+results_step=stepAIC(modelo_log_clean)
+summary(results_step)
+results_step$anova
+#é possível verificar que "
+
+
+#porque é que isto não está a funcionar?
+dados1=dados[,c(2,3,9,10)]
+tuni=tbl_uvregression(
+data = dados,
+method = lm,
+y = bmi,  hide_n = TRUE,
+pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%
+bold_labels()%>%bold_p( t=0.05)
+
+#calcular o modelo de regressão múltipla com os resultados anteriores
+tmult=tbl_regression(modelo_log,pvalue_fun = function(x) style_pvalue(x, digits = 3)) %>%bold_labels()%>%bold_p( t=0.05)
+
+
+tbl_merge_1 <-
+tbl_merge(
+tbls = list(tuni,tmult),
+tab_spanner = c("Simples","Multipla")
+) #comparação da regressão múltipla com a simples
+
+tbl_merge_1 
+```
+
+# Logistic Regression Model
+```{r Verificação das variáveis com associação estatística significativa para a ocorrência de AVCs}
+
+#H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+
+tabela1 <- dados %>%
+  select(-id) %>% #é necessário remover os IDs dos pacientes, visto que estes não têm valor estatístico na prevalência de AVCs
+  tbl_summary(
+    by = stroke,
+    statistic = list(all_continuous() ~ "{mean} ({sd})", 
+                     all_categorical() ~ "{n} ({p}%)"),
+    digits = all_continuous() ~ 2,
+    missing = "no" #para não considerar os NAs (de outra forma não seria possível fazer o cálculo)
+  ) %>%
+  add_p() %>% #para calcular o p-value
+  bold_p() #destaca os valores significativos
+
+tabela1
+
+t.test(age ~ stroke, data = dados, var.equal = TRUE)
+
+prop.table(table(dados$work_type,dados$stroke), margin = 1)
+```
+Para os casos em que p-value<0.05, rejeitamos a hipótese nula, sendo possível concluir que existe uma associação estatisticamente significativa. Posto isto, podemos concluir que as variáveis age, hypertension, heart_disease, ever_married, work_type, avg_glucose_level, bmi e smoking_status têm uma associação estatisticamente significativa com a ocorrência de AVCs, segundo os testes de hipóteses realizados.
+
+Para os casos em que p-value>0.05, não podemos rejeitar a hipótese nula e, por isso, não existem evidências estatísticas de associação suficientes. Posto isto, as variáveis gender e Residence_type não apresentam evidências estatísticas suficientes para estabelecer uma associação significativa entre estas variáveis e a ocorrência de AVCs, segundo os testes realizados.
+
+#Rever esta parte depois de voltar a processar os dados em condições
+Variáveis avaliadas com o Teste de Wilcoxon rank sum test: age, avg_glucose_level e bmi (são variáveis numéricas e nenhuma segue uma distribuição normal)
+
+Variáveis avaliadas com o Teste Qui-quadrado de Pearson: hypertension, heart_disease, ever_married, Residence_type, smoking_status (variáveis qualitativas com muitos dados em todas as categorias)
+
+Variáveis avaliadas com o Teste Exato de Fisher: gender e work_type (no gender, a categoria other obriga à realização deste teste, visto que só há uma pessoa nesta categoria)
+```
+

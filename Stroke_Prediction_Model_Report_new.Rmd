@@ -1,0 +1,61 @@
+---
+title: "Stroke Prediction Model Report"
+author: "Simão Tavares | João Cordeiro | Tomás Matias | Rodrigo Curto"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: flatly
+    df_print: paged
+fontsize: 11pt
+---
+
+```{r Libraries and Data Cleaning, echo=FALSE, include=FALSE}
+############################
+# Load necessary libraries #
+############################
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gt)
+library(scales)
+library(patchwork)
+library(broom)
+library(flextable)
+library(QuantPsyc)
+library(gtsummary)
+library(lmtest)
+library(car)
+library(psych)
+library(GGally)
+library(corrplot)
+##############################
+# Download and data cleaning #
+##############################
+dados_unsort <- read_csv("healthcare-dataset-stroke-data.csv", na = c("","NA","N/A", "Unknown"))
+dados_unsort$id = as.numeric(dados_unsort$id)
+dados_unsort=dados_unsort[dados_unsort$gender != "Other",] #remove 1 observação. Como só uma pessoa tinha este género, não havia uma amostra representativa de pessoas desta categoria com e sem AVCs, logo, posteriormente, os modelos poderiam ser afetados
+dados = dados_unsort[order(dados_unsort$id), ]
+
+#Data structure
+
+dados$age=as.integer(dados$age)
+unique(dados$gender)
+dados$gender = factor(dados$gender, levels = c("Female", "Male"))
+unique(dados$hypertension)
+dados$hypertension = factor(dados$hypertension, levels = c(0, 1), labels = c("No", "Yes"))
+unique(dados$heart_disease)
+dados$heart_disease = factor(dados$heart_disease, levels = c(0, 1), labels = c("No", "Yes"))
+unique(dados$ever_married)
+dados$ever_married = factor(dados$ever_married, levels = c("No", "Yes"))
+unique(dados$Residence_type)
+dados$Residence_type = factor(dados$Residence_type, levels = c("Urban", "Rural"))
+unique(dados$stroke)
+dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("No", "Yes"))
+
+
+
+```
+

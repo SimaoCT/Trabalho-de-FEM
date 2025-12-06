@@ -69,7 +69,7 @@ dados = dados[,c(2:12)]
 
 
 #Imputação de dados
-```{r Libraries and Data Cleaning, echo=FALSE}
+```{r Imputação, echo=FALSE}
 imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
 #n.imput é o número de imputações (5 recomendado por Harrell)
 # nk = número de "nós" (knots) para as curvas (splines). 
@@ -78,6 +78,25 @@ imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ev
 plot(imputar)
 
 ```
+
+
+## Modelos com imputação
+
+
+```{r Modelos com imput, echo=FALSE}
+modelo_imput_log = fit.mult.impute(formula = stroke ~ age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status, fitter = lrm, xtrans = imputar, data = dados)
+
+print(modelo_imput_log)
+
+
+
+modelo_imput_lin = fit.mult.impute(formula = stroke ~ age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status, fitter = lm, xtrans = imputar, data = dados)
+
+print(modelo_imput_lin)
+
+
+```
+
 
 
 

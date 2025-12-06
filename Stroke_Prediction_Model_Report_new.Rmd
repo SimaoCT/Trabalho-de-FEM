@@ -64,22 +64,56 @@ dados$work_type = factor(ifelse(dados$work_type==c("Self-employed"),
                          levels=c("Trabalha por conta de outrém","Trabalha por conta própria"))
 
 dados = dados[,c(2:12)]
-
 ```
 
-
 #Imputação de dados
-```{r Imputação, echo=FALSE}
+Antes de fazer a imputação dos dados, é necessário determinar quais as variáveis que estão significativamente associadas às variáveis nas quais se fará a imputação (bmi e smoking_status)
+```{r Libraries and Data Cleaning, echo=FALSE}
+#H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#bmi
+tabela_bmi <- dados %>%
+  tbl_uvregression(
+    method = lm,       
+    y = bmi,           
+    pvalue_fun = ~style_pvalue(.x, digits = 3)
+  ) %>%
+  add_global_p() %>%   #para as variáveis qualitativas também terem um p-value
+  bold_p()
+
+tabela_bmi
+
+#smoking_status
+tabela_smoking <- dados %>%
+  tbl_summary(
+    by = smoking_status,
+    statistic = list(all_continuous() ~ "{mean} ({sd})", 
+                     all_categorical() ~ "{n} ({p}%)"),
+    missing = "no" 
+  ) %>%
+  add_p() %>%
+  bold_p()
+
+tabela_smoking
+```
+
+No caso do bmi, é possível verificar que apenas o género das pessoas e o tipo de residência têm p-value>0.05, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre o IMC e estas duas variáveis.
+Posto isto, as variáveis a uar para a imputação de valores no bmi são: age, hypertension, heart_disease, ever_married, smoking_status, work_type, avg_glucose_level e stroke
+
+Por outro lado, no caso de smoking_status, as variáveis a usar são: gender, age, heart_disease, ever_married, work_type, bmi e stroke
+
+```{r Libraries and Data Cleaning, echo=FALSE}
 imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
 #n.imput é o número de imputações (5 recomendado por Harrell)
 # nk = número de "nós" (knots) para as curvas (splines). 
 # O padrão é 3, o que permite captar relações não lineares (curvas)
 
 plot(imputar)
-
 ```
 
 
+
+```
 ## Modelos com imputação
 
 
@@ -94,8 +128,8 @@ modelo_imput_lin = fit.mult.impute(formula = stroke ~ age + hypertension + heart
 
 print(modelo_imput_lin)
 
-
 ```
+
 
 
 

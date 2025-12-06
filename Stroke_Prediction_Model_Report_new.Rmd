@@ -106,20 +106,39 @@ imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ev
 # nk = número de "nós" (knots) para as curvas (splines). 
 # O padrão é 3, o que permite captar relações não lineares (curvas)
 
-#Data frame novo
+#novodataframe para guardar os valores da imputação
 dados1 = dados
 
-#Resultado das variáveis
+#resultado para cada uma das variáveis
 bmi_imput = imputar$imputed$bmi
 smoke_imput = imputar$imputed$smoking_status
+#é usada a média dos 5 valores calculados para cada modelo
+bmi_imput_media = rowMeans(bmi_imput)
 
-#Substituir no data set
+#substituir no data set (apenas nas observações com NAs)
 linhas_bmi_na = is.na(dados$bmi)
-dados1$bmi[linhas_bmi_na] = bmi_imput[,1]
+dados1$bmi[linhas_bmi_na] = bmi_imput_media
 
+#definir os níveis para smoking_status
+smokingLev = c("formerly smoked", "never smoked", "smokes")
 
+#função para calcular a moda dos 5 valores obtidos para o smoking_status das observações com NA nesta variável
+moda_smoke <- function(imp_val) {
+   as.numeric(names(table(imp_val))[which.max(table(imp_val))])
+}
+
+#calculada a moda para cada linha
+smoke_imput_moda = apply(smoke_imput, 1, moda_smoke)
+
+#o modelo usa variáveis dummies para codificar cada categoria e, como não há uma ordem definida, ele usa a ordem alfabética para associar as categorias a númerps. Posto isto, é preciso converter as variáveis dummy na categoria correspondente novamente
+smoke_imput_texto = smokingLev[smoke_imput_moda]
+
+#substituir no dataset (apenas nas observações com NAs)
 linhas_smoke_na = is.na(dados$smoking_status)
-dados1$smoking_status[linhas_smoke_na] = smoke_imput[,1]
+dados1$smoking_status[linhas_smoke_na] = smoke_imput_texto
+
+#transforma a variável num factor com níveis definidos
+dados1$smoking_status <- factor(dados1$smoking_status, levels = smokingLev)
 
 plot(imputar)
 ```
@@ -142,6 +161,7 @@ modelo_imput_lin = fit.mult.impute(formula = stroke ~ age + hypertension + heart
 print(modelo_imput_lin)
 
 ```
+
 
 
 

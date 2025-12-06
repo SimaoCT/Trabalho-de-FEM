@@ -31,6 +31,8 @@ library(car)
 library(psych)
 library(GGally)
 library(corrplot)
+library(Hmisc)
+library(rms)
 ##############################
 # Download and data cleaning #
 ##############################
@@ -61,8 +63,21 @@ dados$work_type = factor(ifelse(dados$work_type==c("Self-employed"),
                          "Trabalha por conta própria","Trabalha por conta de outrém"),
                          levels=c("Trabalha por conta de outrém","Trabalha por conta própria"))
 
-
+dados = dados[,c(2:12)]
 
 ```
+
+
+#Imputação de dados
+```{r Libraries and Data Cleaning, echo=FALSE}
+imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
+#n.imput é o número de imputações (5 recomendado por Harrell)
+# nk = número de "nós" (knots) para as curvas (splines). 
+# O padrão é 3, o que permite captar relações não lineares (curvas)
+
+plot(imputar)
+
+```
+
 
 

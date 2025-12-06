@@ -97,10 +97,8 @@ tabela_smoking <- dados %>%
 tabela_smoking
 ```
 
-No caso do bmi, é possível verificar que apenas o género das pessoas e o tipo de residência têm p-value>0.05, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre o IMC e estas duas variáveis.
-Posto isto, as variáveis a uar para a imputação de valores no bmi são: age, hypertension, heart_disease, ever_married, smoking_status, work_type, avg_glucose_level e stroke
-
-Por outro lado, no caso de smoking_status, as variáveis a usar são: gender, age, heart_disease, ever_married, work_type, bmi e stroke
+É possível verificar que apenas a variável Residence_type tem p-value>0.05 para ambos os casos, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre essa variável e as variáveis bmi e smoking_status. Posto isto, esta variável será excluída do modelo de imputação múltipla. 
+Como a imputação é feita usando a função aregInput, dentro das variáveis que são selecionadas para o modelo, o algoritmo é capaz de selecionar as que são mais significativas para a determinação de cada uma das variáveis e, considerando isso, fazer a previsão. Por outras palavras, esta função "ignora" automaticamente variáveis que não têm poder preditivo para a variável em questão
 
 ```{r Libraries and Data Cleaning, echo=FALSE}
 imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
@@ -129,6 +127,7 @@ modelo_imput_lin = fit.mult.impute(formula = stroke ~ age + hypertension + heart
 print(modelo_imput_lin)
 
 ```
+
 
 
 

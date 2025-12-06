@@ -43,19 +43,26 @@ dados = dados_unsort[order(dados_unsort$id), ]
 
 dados$age=as.integer(dados$age)
 unique(dados$gender)
-dados$gender = factor(dados$gender, levels = c("Female", "Male"))
+dados$gender = factor(ifelse(dados$gender=="Female","Feminino","Masculino"),
+                             levels = c("Feminino","Masculino"))
 unique(dados$hypertension)
-dados$hypertension = factor(dados$hypertension, levels = c(0, 1), labels = c("No", "Yes"))
+dados$hypertension = factor(dados$hypertension, levels = c(0, 1), labels = c("Não", "Sim"))
 unique(dados$heart_disease)
-dados$heart_disease = factor(dados$heart_disease, levels = c(0, 1), labels = c("No", "Yes"))
+dados$heart_disease = factor(dados$heart_disease, levels = c(0, 1), labels = c("Não", "Sim"))
 unique(dados$ever_married)
-dados$ever_married = factor(dados$ever_married, levels = c("No", "Yes"))
+dados$ever_married = factor(ifelse(dados$ever_married=="No","Não","Sim"),
+                            levels = c("Não", "Sim"))
 unique(dados$Residence_type)
-dados$Residence_type = factor(dados$Residence_type, levels = c("Urban", "Rural"))
+dados$Residence_type = factor(ifelse(dados$Residence_type=="Urban","Urbano","Rural"),
+                              levels = c("Urbano", "Rural"))
 unique(dados$stroke)
-dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("No", "Yes"))
+dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("Não", "Sim"))
+dados$work_type = factor(ifelse(dados$work_type==c("Self-employed"),
+                         "Trabalha por conta própria","Trabalha por conta de outrém"),
+                         levels=c("Trabalha por conta de outrém","Trabalha por conta própria"))
 
 
 
 ```
+
 

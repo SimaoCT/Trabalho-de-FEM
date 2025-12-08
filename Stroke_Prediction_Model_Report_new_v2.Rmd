@@ -1,0 +1,905 @@
+---
+title: "Stroke Prediction Model Report"
+author: "Simão Tavares | João Cordeiro | Tomás Matias | Rodrigo Curto"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: flatly
+    df_print: paged
+fontsize: 11pt
+---
+#Pacotes importados
+
+Nesta secção encontram-se os pacotes que foram necessários para a execução do código.
+
+```{r Libraries and Data Cleaning, echo=FALSE, include=FALSE}
+############################
+# Load necessary libraries #
+############################
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gt)
+library(scales)
+library(patchwork)
+library(broom)
+library(flextable)
+library(QuantPsyc)
+library(gtsummary)
+library(lmtest)
+library(car)
+library(psych)
+library(GGally)
+library(corrplot)
+library(Hmisc)
+library(rms)
+library(MASS)
+library(pROC)             
+library(ResourceSelection)
+library(caret)
+
+```
+
+#Tratamento dos dados
+
+O primeiro passo foi a importação do dataset e o processamento dos dados, inclusive a transformação das variáveis em fatores, a eliminação de possíveis NAs, etc.
+
+```{r Data Processing, echo=False, include=False}
+#Importação e Limpeza dos dados
+dados_unsort <- read_csv("healthcare-dataset-stroke-data.csv", na = c("","NA","N/A", "Unknown")) #substitui as variáveis sem informação por NA
+dados_unsort$id = as.numeric(dados_unsort$id)
+dados_unsort=dados_unsort[dados_unsort$gender != "Other",] #remove 1 observação. Como só uma pessoa tinha este género, não havia uma amostra representativa de pessoas desta categoria com e sem AVCs, logo, posteriormente, os modelos poderiam ser afetados
+dados = dados_unsort[order(dados_unsort$id), ]
+
+dados$age = round(dados$age, 0)
+unique(dados$gender)
+dados$gender = factor(ifelse(dados$gender=="Female","Feminino","Masculino"),
+                             levels = c("Feminino","Masculino"))
+unique(dados$hypertension)
+dados$hypertension = factor(dados$hypertension, levels = c(0, 1), labels = c("Não", "Sim"))
+unique(dados$heart_disease)
+dados$heart_disease = factor(dados$heart_disease, levels = c(0, 1), labels = c("Não", "Sim"))
+unique(dados$ever_married)
+dados$ever_married = factor(ifelse(dados$ever_married=="No","Não","Sim"),
+                            levels = c("Não", "Sim"))
+unique(dados$Residence_type)
+dados$Residence_type = factor(ifelse(dados$Residence_type=="Urban","Urbano","Rural"),
+                              levels = c("Urbano", "Rural"))
+unique(dados$stroke)
+dados$stroke = factor(dados$stroke, levels = c(0, 1), labels = c("Não", "Sim"))
+dados$work_type = factor(ifelse(dados$work_type == "Self-employed",
+                         "Trabalha por conta própria",
+                         ifelse(dados$work_type %in% c("children","Never_worked"),"Não trabalha",
+                         "Trabalha por conta de outrém")),
+                         levels=c("Não trabalha","Trabalha por conta de outrém","Trabalha por conta própria"))
+unique(dados$work_type)
+
+dados = dados[,c(2:12)]
+
+```
+
+##Imputação de dados
+
+Antes de fazer a imputação dos dados, é necessário determinar quais as variáveis que estão significativamente associadas às variáveis nas quais se fará a imputação (bmi e smoking_status)
+
+```{r Variables impact analysis, echo=FALSE}
+#H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#bmi
+tabela_bmi = dados %>%
+  tbl_uvregression(method = lm,
+                   y = bmi,
+                   pvalue_fun = ~style_pvalue(.x, digits = 3)) %>%
+  add_global_p() %>%   #para as variáveis qualitativas também terem um p-value
+  bold_p()
+
+tabela_bmi
+
+#smoking_status
+tabela_smoking = dados %>%
+  tbl_summary(by = smoking_status,
+              statistic = list(all_continuous() ~ "{mean} ({sd})",all_categorical() ~ "{n} ({p}%)"),
+              missing = "no") %>%
+  add_p() %>%
+  bold_p()
+
+tabela_smoking
+```
+
+É possível verificar que apenas a variável Residence_type tem p-value>0.05 para ambos os casos, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre essa variável e as variáveis bmi e smoking_status. Posto isto, esta variável será excluída do modelo de imputação múltipla. Como a imputação é feita usando a função aregImpute, dentro das variáveis que são selecionadas para o modelo, o algoritmo é capaz de selecionar as que são mais significativas para a determinação de cada uma das variáveis e, considerando isso, fazer a previsão. Por outras palavras, esta função "ignora" automaticamente variáveis que não têm poder preditivo para a variável em questão
+
+```{r Data imputation, echo=FALSE}
+imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
+#n.impute é o número de imputações (5, recomendado por Harrell)
+# nk = número de "nós" (knots) para as curvas (splines). O padrão é 3, o que permite captar relações não lineares (curvas)
+#é criado um novo dataframe para guardar os valores gerados com a imputação
+dados1 = dados
+
+#resultados para cada uma das variáveis
+bmi_imput = imputar$imputed$bmi
+smoke_imput = imputar$imputed$smoking_status
+#no caso do bmi, como esta é uma variável quantitativa, é usada a média dos 5 valores calculados para cada observação
+bmi_imput_media = rowMeans(bmi_imput)
+
+#substituir no dataset (apenas nas observações com NAs)
+linhas_bmi_na = is.na(dados1$bmi)
+dados1$bmi[linhas_bmi_na] = bmi_imput_media
+
+#definir os níveis para smoking_status
+smokingLev = c("formerly smoked", "never smoked", "smokes")
+
+#no caso do smoking_status, como a variável qualitativa, é determinada a moda dos 5 valores obtidos por imputação para cada observação
+#função para calcular a moda
+moda_smoke = function(imp_val) {
+   as.numeric(names(table(imp_val))[which.max(table(imp_val))])
+}
+
+#calculada a moda para cada linha
+smoke_imput_moda = apply(smoke_imput, 1, moda_smoke)
+
+#o modelo usa variáveis dummies para codificar cada categoria e, como não há uma ordem definida, ele usa a ordem alfabética para associar as categorias a números. Posto isto, é preciso converter as variáveis dummy na categoria correspondente novamente
+smoke_imput_texto = smokingLev[smoke_imput_moda]
+
+#substituir no dataset (apenas nas observações com NAs)
+linhas_smoke_na = is.na(dados$smoking_status)
+dados1$smoking_status[linhas_smoke_na] = smoke_imput_texto
+
+#transforma a variável num fator com níveis definidos
+dados1$smoking_status = factor(dados1$smoking_status, levels = smokingLev)
+
+plot(imputar)
+
+
+#Criação de classes etárias com base na idade numérica
+dados1$Age_class = cut(dados1$age,
+                      breaks = c(-Inf, 39, 64, Inf),
+                      labels = c("Young Adults", "Middle-Age Adults", "Older Adults"))
+dados1$Age_class = factor(dados1$Age_class,
+                         levels = c("Young Adults", "Middle-Age Adults", "Older Adults"))
+
+dados1$ClassBMI=ifelse(dados1$bmi<=18.5,"Underweigth", ifelse(dados1$bmi<25,"Healthy weigth", ifelse(dados1$bmi<30,"Overweight", ifelse(dados1$bmi<35,"Obesity I", ifelse(dados1$bmi<40,"Obesity II", "Obesity III")))))
+
+#Criação de classes de IMC
+dados1$ClassBMI = cut(dados1$bmi,
+                     breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf),
+                     labels = c("Underweight", "Healthy weight", "Overweight",
+                                "Obesity I", "Obesity II", "Obesity III"),
+                     right = FALSE)
+
+
+dados1$ClassBMI = factor(dados1$ClassBMI,levels = c("Underweight", "Healthy weight", "Overweight",
+                                                   "Obesity I", "Obesity II", "Obesity III"),ordered = TRUE)
+
+#Criação de classes de glucose
+dados1$ClassGlu = cut(dados1$avg_glucose_level,
+                      breaks = c(-Inf, 100, 126, Inf),
+                      labels = c("Normal", "Prediabetes", "Diabetes"),
+                      right = FALSE)
+#Os dados dos níveis médios de glucose podem ser enganadores se a análise não tiver sido feita em jejum
+
+```
+
+# Exploratory Data Analysis
+
+## Qualitative Variables
+
+```{r Qualitative variables plots and frequence tables, echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Distribuição das pessoas com AVC por cada sexo
+
+ggplot(dados1, aes(x=gender, fill=stroke)) +
+  geom_bar(position="fill") +
+  labs(x="Género", y="Proporção") +
+  theme_classic() +
+  theme(axis.title = element_text(size = 10),                         # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico  
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Presença de AVC")
+
+#Tabela comparativa das pessoas com AVC em cada sexo
+
+tbl_val=table(dados1$stroke,dados1$gender)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Género","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Género",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$AVC),]
+colnames(new_table)=c("AVC","Feminino","Masculino")
+new_table$Total=rowSums(new_table[,c("Feminino","Masculino")])
+somas_col=colSums(new_table[,c("Feminino","Masculino","Total")])
+linha_total=data.frame(AVC="Total",Feminino=somas_col["Feminino"],
+                       Masculino=somas_col["Masculino"],
+                       Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Género",""),
+                           colwidths=c(1,2,1))
+final_table=align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+#Distribuição das pessoas com AVC por pessoas com e sem hipertensão
+
+ggplot(dados1, aes(x = hypertension, fill = stroke)) +
+  geom_bar(position = "fill") +
+  labs(x = "Hipertensão", 
+       y = "Proporção",
+       fill = "Presença de AVC") +
+  theme_classic() +
+  theme(
+    axis.title   = element_text(size = 10),
+    axis.text    = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    legend.text  = element_text(size = 7),
+    plot.title   = element_text(hjust = 0.5, size = 12, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("red3", "forestgreen"),
+                    name = "Presença de AVC")
+
+#Tabela comparativa das pessoas com AVC e com hipertensão
+
+tbl_val=table(dados1$stroke,dados1$hypertension)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Hipertensão","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Hipertensão",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$AVC),]
+colnames(new_table)=c("AVC","Não","Sim")
+new_table$Total=rowSums(new_table[,c("Não","Sim")])
+somas_col=colSums(new_table[,c("Não","Sim","Total")])
+linha_total=data.frame(AVC="Total",Não=somas_col["Não"],
+                       Sim=somas_col["Sim"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Hipertensão",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+#Distribuição da prevalência de AVC entre as pessoas com e sem doenças cardíacas
+
+ggplot(dados1, aes(x = heart_disease, fill = stroke)) +
+  geom_bar(position = "fill") +
+  labs(
+    x = "Doença Cardíaca", 
+    y = "Proporção",
+    fill = "Presença de AVC"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title   = element_text(size = 10),
+    axis.text    = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    legend.text  = element_text(size = 7),
+    plot.title   = element_text(hjust = 0.5, size = 12, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(
+    values = c("red3", "forestgreen"),
+    name = "Presença de AVC"
+  )
+
+#Tabela comparativa das pessoas com AVC e com doenças cardíacas
+
+tbl_val=table(dados1$stroke,dados1$heart_disease)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Doença Cardíaca","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Doença Cardíaca",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$AVC),]
+colnames(new_table)=c("AVC","Não","Sim")
+new_table$Total=rowSums(new_table[,c("Não","Sim")])
+somas_col=colSums(new_table[,c("Não","Sim","Total")])
+linha_total=data.frame(AVC="Total",Não=somas_col["Não"],
+                       Sim=somas_col["Sim"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Doença Cardíaca",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+#Distribuição da prevalência de AVCs entre pessoas casadas e solteiras
+
+ggplot(dados1, aes(x = ever_married, fill = stroke)) +
+  geom_bar(position = "fill") +
+  labs(
+    x = "Já esteve casado",
+    y = "Proporção",
+    fill = "Presença de AVC"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title   = element_text(size = 10),
+    axis.text    = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    legend.text  = element_text(size = 7),
+    plot.title   = element_text(hjust = 0.5, size = 12, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(
+    values = c("red3", "forestgreen"),
+    name = "Presença de AVC"
+  )
+
+#Tabela comparativa da prevalência de AVCs entre pessoas casadas e solteiras
+
+tbl_val=table(dados1$stroke,dados1$ever_married)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Já esteve casado?","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Já esteve casado?",
+                  v.names = "Freq",
+                  direction = "wide")
+new_table=new_table[order(new_table$AVC),]
+colnames(new_table)=c("AVC","Não","Sim")
+new_table$Total=rowSums(new_table[,c("Não","Sim")])
+somas_col=colSums(new_table[,c("Não","Sim","Total")])
+linha_total=data.frame(AVC="Total",Não=somas_col["Não"],
+                       Sim=somas_col["Sim"],Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Já esteve casado?",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3,4)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+#Distribuição da prevalência de AVCs entre pessoas com diferentes tipos de trabalho
+
+ggplot(dados1, aes(x = work_type, fill = stroke)) +
+  geom_bar(position = "fill") +
+  labs(
+    x = "Tipo de Trabalho",
+    y = "Proporção",
+    fill = "Presença de AVC"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title   = element_text(size = 10),
+    axis.text    = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    legend.text  = element_text(size = 7),
+    plot.title   = element_text(hjust = 0.5, size = 12, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("red3", "forestgreen"),
+                    name = "Presença de AVC")
+
+#Tabela comparattiva da prevalência de AVCs entre pessoas com diferentes tipos de trabalho
+
+tbl_val=table(dados1$stroke,dados1$work_type)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Tipo de trabalho","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Tipo de trabalho",
+                  v.names = "Freq",
+                  direction = "wide")
+colnames(new_table)=c("AVC","Não trabalha","Trabalha por conta de outrém","Trabalha por conta própria")
+new_table$Total=rowSums(new_table[,c("Não trabalha","Trabalha por conta de outrém","Trabalha por conta própria")])
+somas_col=colSums(new_table[,c("Não trabalha","Trabalha por conta de outrém","Trabalha por conta própria","Total")])
+linha_total=data.frame(AVC="Total","Não trabalha"=somas_col["Não trabalha"],
+                       "Trabalha por conta de outrém"=somas_col["Trabalha por conta de outrém"],
+                       "Trabalha por conta própria"=somas_col["Trabalha por conta própria"],
+                       Total=somas_col["Total"],check.names=F)
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Work type",""),
+                           colwidths=c(1,3,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3,4,5)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+#Distribuição da prevalência de AVCs entre pessoas com residência rural e urbana
+
+ggplot(dados1, aes(x = Residence_type, fill = stroke)) +
+  geom_bar(position = "fill") +
+  labs(
+    x = "Tipo de Residência", 
+    y = "Proporção",
+    fill = "Presença de AVC"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title   = element_text(size = 10),
+    axis.text    = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    legend.text  = element_text(size = 7),
+    plot.title   = element_text(hjust = 0.5, size = 12, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(
+    values = c("red3", "forestgreen"),
+    name   = "Presença de AVC",
+  )
+
+#Tabela comparativa da prevalência de AVCs entre pessoas com residência rural e urbana
+
+tbl_val=table(dados1$stroke,dados1$Residence_type)
+df_tbl=as.data.frame(tbl_val)
+colnames(df_tbl)=c("AVC","Tipo de Residência","Freq")
+new_table=reshape(df_tbl,idvar = "AVC",
+                  timevar = "Tipo de Residência",
+                  v.names = "Freq",
+                  direction = "wide")
+colnames(new_table)=c("AVC","Urbano","Rural")
+new_table$Total=rowSums(new_table[,c("Urbano","Rural")])
+somas_col=colSums(new_table[,c("Urbano","Rural","Total")])
+linha_total=data.frame(AVC="Total","Urbano"=somas_col["Urbano"],
+                       "Rural"=somas_col["Rural"],
+                       Total=somas_col["Total"])
+new_table=rbind(new_table,linha_total)
+final_table=flextable(new_table)
+final_table=merge_v(final_table,j=1) #junta as colunas iguais
+final_table=add_header_row(final_table, values=c("","Tipo de Residência",""),
+                           colwidths=c(1,2,1))
+final_table = align(final_table, align = "center", part = "all")
+final_table=bold(final_table,part="header")
+final_table=bold(final_table,j="AVC",part="body")
+final_table=vline(final_table,j=c(1,2,3)) #linhas verticais
+final_table=hline(final_table,i=c(1,2)) #linhas horizontais
+final_table=vline_left(final_table)
+final_table=vline_right(final_table)
+final_table
+
+```
+
+## Quantitative Variables
+
+```{r Quantitative variables plots, echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+
+#Distribuição da prevalência de AVCs segundo níveis médios de glucose reportados
+
+a1=ggplot(dados1, aes(x=avg_glucose_level, y=after_stat(count)*100/sum(after_stat(count)), fill=stroke))+
+  geom_histogram(position = "identity", bins = nclass.Sturges(dados1$avg_glucose_level))+
+  labs(title="Distribuição dos Níveis Médios de Glucose por Presença de AVC", x="Nível Médio de Glucose",y="Percentagem (%)", fill="Presença de AVC") +
+  theme_classic()+
+  theme(axis.title = element_text(size = 10),                         # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"))+      # título do gráfico
+  scale_fill_manual(values=c("red3", "forestgreen"), name="Presença de AVC")
+
+a2=ggplot(subset(dados1, stroke=="Sim"), aes(x=avg_glucose_level, y=after_stat(count)*100/sum(after_stat(count))))+
+  geom_histogram(fill="forestgreen", bins=nclass.Sturges(dados1$avg_glucose_level))+
+  labs(title="Distribuição de AVC pelos Níveis de Glucose", x="Nível Médio de Glucose", y="Percentagem (%)")+
+  theme_classic()+
+  theme(axis.title=element_text(size=10),                         # título dos eixos
+    axis.text=element_text(size=8),                               # números nos eixos
+    legend.title=element_text(size=9),                            # título da legenda
+    legend.text=element_text(size=7),                             # texto da legenda
+    plot.title=element_text(hjust=0.5, size = 12, face="bold"))   # título do gráfico                   
+
+(a1+a2)+plot_layout(nrow=2) #isto permite-nos ver se as distribuições são minimamente semelhantes
+
+#Pela análise dos dois plots, é possível verificar que a distribuição de níveis médios de glucose entre pessoas com e sem AVCs é mais ou menos semelhante. Seria de esperar que maiores níveis de glucose estivessem associados a uma maior probabilidade de ocorrência de AVCs. Contudo, pela visualização do segundo gráfico, o contrário parece verificar-se. Isto pode estar a ser provocado pelo facto de haver uma muito maior proporção de indivíduos com níveis médios de glucose menores, incluindo, consequentemente, um maior número de casos de pessoas com AVCs 
+
+#Este chunk está a dar um warning, para o ver colocar TRUE
+
+#Distribuição da prevalência de AVCs por faixa etária e por sexo
+
+ggplot(dados1,aes(x=stroke,y=age))+
+  geom_boxplot()+
+  labs(title="Distribuição da Idade em Pessoas com e sem\nAVC por Género",
+       y="Idade",x="Ocorrência de AVC")+
+  facet_wrap(~gender)+
+  coord_flip()+
+  theme_classic()+
+  theme(axis.title = element_text(size = 10),                         # título dos eixos
+    axis.text = element_text(size = 8),                               # números nos eixos
+    legend.title = element_text(size = 9),                            # título da legenda
+    legend.text = element_text(size = 7),                             # texto da legenda
+    plot.title = element_text(hjust=0.5,size = 12,face="bold"),       # título do gráfico
+    panel.border=element_rect(color="black",fill=NA,size=1),          # coloca uma linha entre os gráficos
+    panel.spacing=unit(1,"lines"))                                    # para separar os gráficos
+
+```
+
+```{r Avaliação da normalidade das variáveis contínuas, echo=False, include=False}
+par(mfrow=c(1,3))
+
+#idade
+qqnorm(dados1$age, main = "QQ-Plot: Idade")
+qqline(dados1$age, col = "red", lwd = 2)
+
+#níveis médios de glucose
+qqnorm(dados1$avg_glucose_level, main = "QQ-Plot: Níveis médios de glucose")
+qqline(dados1$avg_glucose_level, col = "red", lwd = 2)
+
+#bmi
+qqnorm(dados1$bmi, main = "QQ-Plot: IMC")
+qqline(dados1$bmi, col = "red", lwd = 2)
+
+par(mfrow=c(1,1))
+
+#A análise da normalidade apenas pode ser feita para variáveis contínuas. Como o dataset apresenta mais de 5000 observações para cada variável, não pode ser aplicado o teste de Shapiro-Wilk para avaliar a normalidade da idade, do IMC e dos níveis médios de glucose. Poderia optar-se pelo uso do teste de Anderson-Darling ou de Kolmogorov-Smirnov, contudo, devido ao grande número de observações, qualquer desvio da distribuição normal irá fazer com que o teste aponte para a rejeição da hipótese da normalidade e, por isso, optou-se por uma análise gráfica. Como é possível verificar, nenhuma das 3 variáveis segue uma distribuição normal.
+
+```
+
+# Modelo de Regressão Linear
+
+Esta secção corresponde ao desenvolvimento do modelo de regressão linear, cujo objetivo é determinar o IMC de uma pessoa considerando outras variáveis do dataset.
+
+
+```{r Linear Regression Model, echo=FALSE, fig.align='center', results='asis', out.width="100%"}
+
+#Determinação das variáveis relevantes para a determinação do IMC
+
+tabela_bmi = dados1 %>%
+  select(-ClassBMI) %>%
+  tbl_uvregression(method = lm,
+                   y = bmi,
+                   pvalue_fun = ~style_pvalue(.x, digits = 3)) %>%
+  add_global_p() %>%   #para as variáveis qualitativas também terem um p-value
+  bold_p()
+
+tabela_bmi
+
+```
+
+H0: Não existe associação estatisticamente significativa entre o IMC e a variável em questão
+H1: Existe associação estatisticamente significativa entre o IMC e a variável em questão
+Como p-value>0.05 apenas para o caso das variáveis gender e Residence_type, aceitamos a hipótese H0 nestes dois casos, ou seja, aceitamos que não existe associação significativa entre estas variáveis e a determinação do IMC de uma pessoa
+
+```{r Linear Regression Model (cont.), echo=FALSE, fig.align='center', results='asis', out.width="100%"}
+#Modelo do BMI com diferentes variáveis
+modelo_BMI=lm(bmi~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados1)
+summary(modelo_BMI)
+
+#Avaliação do pressuposto de normalidade dos resíduos
+qqnorm(residuals(modelo_BMI),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_BMI),col="red",lwd=3)
+# o gráfico aponta para a rejeição da hipótese de normalidade dos resíduos. Como a distribuição gráfica no QQ-plot era semelhante a uma função logarítmica, aplicou-se o logaritmo ao BMI, para verificar se, desta forma, os resíduos já seguiam uma distribuição normal
+
+modelo_log=lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados1)
+qqnorm(residuals(modelo_log),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_log),col="red",lwd=3)
+#a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
+
+#Avaliação da homocedasticidade
+bptest(modelo_log) #indica rejeição, mas deve ser feita uma avaliação gráfico devido ao elevado número de pontos e à eleveada sensibilidade do teste
+plot(fitted(modelo_log),residuals(modelo_log))
+cores_idade = ifelse(dados$age < 16, "blue", "red") #azul para crianças
+plot(fitted(modelo_log), residuals(modelo_log), col = cores_idade, pch = 19,
+     xlab = "Fitted Values (Log BMI Previsto)", ylab = "Resíduos",
+     main = "Separação por Idade: Crianças (Azul) vs Adultos (Vermelho)")
+#pela análise do gráfico é possível verificar que a formação de dois grupos se deve à existência de dois grupos (Adultos e Crianças), que, normalmente, têm valores de IMC bastante distintos. Contudo, é possível verificar que existe homocedasticidade
+
+#Avaliação da multicolinearidade
+vif(modelo_log)
+#como work_type e age têm valores maiores que 2, podemos concluir que ambas as variáveis correspondem a casos de multicolinearidade e, por isso, devemos excluir variáveis do modelo para reduzir os valroes de todas as variáveis para valores menores que 2. Contudo, como a variável idade está fortemente relacionada com o IMC (visto que quantos mais velhas as pessoas, mais os hábitos de sedentarismo e maior o IMC), foi testado um modelo apenas excluindo o work_type. É importante mencionar que a idade está diretamente relacionada o estatuto de trabalhador de cada pessoa, o que justifica os elevados VIFs para ambas as variáveis
+
+#Modelo sem work_type
+modelo_log1=lm(log(bmi)~age+hypertension+heart_disease+ever_married+avg_glucose_level+smoking_status+stroke,data=dados1)
+qqnorm(residuals(modelo_log1),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_log1),col="red",lwd=3)
+#a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
+
+#Avaliação da homocedasticidade
+bptest(modelo_log1) #indica rejeição, mas deve ser feita uma avaliação gráfico devido ao elevado número de pontos e à eleveada sensibilidade do teste
+plot(fitted(modelo_log1),residuals(modelo_log1)) #é possível verificar que existe homocedasticidade
+
+#Avaliação da multicolinearidade
+vif(modelo_log1)
+#a idade continua com um vif superior a 2, mas devido à sua elevada importância para a determinação do IMC, foi excluída a variável com maior vif de seguida, ou seja, a variável que considera o estado civil, algo que, mais uma vez, está fortemente relacionado com a idade, visto que é pouco frequente haver crianças casadas
+
+#Modelo sem work_type e sem ever_married
+modelo_log2=lm(log(bmi)~age+hypertension+heart_disease+avg_glucose_level+smoking_status+stroke,data=dados1)
+qqnorm(residuals(modelo_log2),pch=20,main="QQ-plot: Resíduos")
+qqline(residuals(modelo_log2),col="red",lwd=3)
+#a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
+
+#Avaliação da homocedasticidade
+bptest(modelo_log2) #indica rejeição, mas deve ser feita uma avaliação gráfico devido ao elevado número de pontos e à eleveada sensibilidade do teste
+plot(fitted(modelo_log2),residuals(modelo_log2)) #é possível verificar que existe homocedasticidade
+
+#Avaliação da multicolinearidade
+vif(modelo_log2)
+
+
+```
+
+## Avaliação da qualidade do modelo
+
+```{r Quality check, echo = FALSE}
+
+#Coeficientes de determinação
+summary(modelo_log)$r.squared #R^2=0.3204
+summary(modelo_log)$adj.r.squared #R^2=0.3191
+summary(modelo_log1)$r.squared #R^2=0.2105
+summary(modelo_log1)$adj.r.squared #R^2=0.2093
+summary(modelo_log2)$r.squared #R^2=0.1865
+summary(modelo_log2)$adj.r.squared #R^2=0.1854
+#é possível verificar que o R^2 diminuiu drasticamente com a exclusão de variáveis, por isso, é preferível ter alguma multicolinearidade no modelo e que explica uma maior quantidade de dados do que um modelo sem multicolinearidade, mas que não consegue explicar quase nada
+
+#para tentar aumentar um bocado o valor de R^2, foram excluídos valores 
+
+#para melhorar o R^2 deveriam ser introduzidas mais variáveis e que estivessem diretamente relacionadas com o IMC, como o caso do peso e da altura
+
+#Avaliação gráfica da qualidade da regressão
+
+plot(log(dados1$bmi), fitted(modelo_log), xlab="IMC observado", ylab="IMC estimado")
+abline(0,1,col="red",lty=2,lwd=1.5)
+legend("topleft",legend="Previsão ideal (x=y)",col="red",lty=2,lwd=1.5)
+plot(log(dados1$bmi), fitted(modelo_log2), xlab="IMC observado", ylab="IMC estimado", main="Avaliação gráfica da qualidade da regressão")
+abline(0,1,col="red",lty=2,lwd=1.5)
+legend("topleft",legend="Previsão ideal (x=y)",col="red",lty=2,lwd=1.5)
+
+#os resultados gráficos comprovam o que se verificou com a análise do coeficiente de determinação, que o modelo tem um desempenho fraco (apesar de os pontos estarem em torno da reta ideal, existe uma grnade dispersão em torno da mesma, indicando um mau desempenho do modelo)
+
+#Comparação dos desvios dos erros
+sd(residuals(modelo_log))
+sd(residuals(modelo_log2))
+sd(dados1$bmi)
+
+#Testar o significado da regressão
+summary(modelo_log)
+summary(modelo_log1)
+summary(modelo_log2)
+#todos os p-values são inferiores a 0.05, porém, como o dataset é demasiado grande, os p-values tornam-se pequenos facilmente
+
+#método de seleção automática de variáveis
+
+stepAIC(modelo_log,direction="both")
+#as variáveis identificadas como relevantes são as mesmas que foram identificadas pela análise anterior 
+
+#Identificação de valores atípicos
+d=rstandard(modelo_log)
+plot(d)
+outliers_d=abs(d)>1.96
+table(outliers_d)
+d=rstandard(modelo_log2)
+plot(d)
+outliers_d=abs(d)>1.96
+table(outliers_d)
+
+#Identificação dos pontos com elevada alavancagem
+cooksD=cooks.distance(modelo_log)
+influentes=cooksD>3*mean(cooksD)
+table(influentes)
+cooksD=cooks.distance(modelo_log2)
+influentes=cooksD>3*mean(cooksD)
+table(influentes)
+
+#a exclusão dos valores atípicos e influentes possivelmente poderia melhorar um bocado a qualidade do modelo
+
+```
+
+## Modelo de regressão linear dos dados sem imputação
+
+```{r Modelos com imput, echo=FALSE}
+modelo_sem_imp = lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados)
+
+summary(modelo_sem_imp)
+
+#pela comparação dos valores do coeficiente de determinação, é possível verificar que a imputação aumenta bastante a qualidade do modelo de previsão (R^2 ajustado é 0.07705 sem imputação e 0.3191 com imputação)
+```
+
+# Modelo de Regressão Logística
+
+Esta secção corresponde ao desenvolvimento do modelo de regressão logístico, cujo objetivo é determinar a probabilidade de um paciente ter um AVC.
+
+```{r}
+#Determinação das variáveis relevantes para a determinação do AVC
+#H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+#H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
+
+tabela1 <- dados1 %>%
+  tbl_summary(by = stroke,
+    statistic = list(all_continuous() ~ "{mean} ({sd})", 
+                     all_categorical() ~ "{n} ({p}%)"),
+    digits = all_continuous() ~ 2) %>%
+  add_p() %>% #para calcular o p-value
+  bold_p() #destaca os valores significativos
+
+tabela1
+```
+Para os casos em que p-value<0.05, rejeitamos a hipótese nula, sendo possível concluir que existe uma associação estatisticamente significativa. Posto isto, podemos concluir que as variáveis age, hypertension, heart_disease, ever_married, work_type, avg_glucose_level, bmi, smoking_status, Age_class, ClassBMI e ClassGlu têm uma associação estatisticamente significativa com a ocorrência de AVCs, segundo os testes de hipóteses realizados.
+
+Para os casos em que p-value>0.05, não podemos rejeitar a hipótese nula e, por isso, não existem evidências estatísticas de associação suficientes. Posto isto, as variáveis gender e Residence_type não apresentam evidências estatísticas suficientes para estabelecer uma associação significativa entre estas variáveis e a ocorrência de AVCs, segundo os testes realizados.
+
+Variáveis avaliadas com o Teste de Wilcoxon rank sum test: age, avg_glucose_level e bmi (são variáveis numéricas e nenhuma segue uma distribuição normal)
+
+Variáveis avaliadas com o Teste Qui-quadrado de Pearson: as restantes (variáveis qualitativas com várias observações em todas as categorias)
+
+```{r Logistic Regression Model, echo = FALSE}
+modelo_logi1 = glm(stroke ~ age + bmi + avg_glucose_level +
+                hypertension + heart_disease +
+                ever_married + work_type +
+                smoking_status, data = dados1, family = binomial('logit'))
+summary(modelo_logi1)
+
+#ORs e CI
+
+OR_table = broom::tidy(modelo_logi1, exponentiate = TRUE, conf.int = TRUE)
+OR_table
+#Com base nos p-values < 0.05 verificamos que as variáveis significativas são a age, hypertension = yes, avg_glucose_level
+
+# Age -> A cada ano o risco de sofrer AVC aumenta ~7.5%
+#A idade é o fator de risco mais forte e estatisticamente mais robusto do modelo.
+# hypertension -> Hipertensos têm ~40% mais risco
+# avg_glucose_level -> Cada aumento de 1 unidade no nível médio de glucose aumenta o risco de AVC em 0.40%.
+
+#As restantes variáveis não significativas apesar de serem clinicamente relevantes, neste conjunto de dados, não apresentaram efeito estatisticamente significativo, possivelmente devido a variabilidade alta, multicolinearidade, ou baixa frequência dos casos positivos (AVC).
+
+#Posto isto foi criado um segundo modelo apenas com as variáveis significativas (é possível que apesar de não variar muito o AIC deste modelo é ligeiramente menor que o de modelo_logi1: diferença de 0.4)
+modelo_logi2 = glm(stroke ~ age + avg_glucose_level + hypertension,
+                   data = dados1, family = binomial('logit'))
+```
+
+## Treino e teste do modelo
+
+```{r}
+
+#o dataset é divido em treino e em teste
+train = dados1[1:4500,]
+test = dados1[4501:nrow(dados1),]
+
+#o modelo está a ser treinado com o treino
+modelo_final = glm(stroke ~ age + avg_glucose_level + hypertension, 
+                   data = train, 
+                   family = "binomial")
+
+#type="response" garante que sai uma probabilidade de 0 a 1. Aqui o modelo está a ser testado para o conjunto de teste
+prob_test = predict(modelo_final, newdata = test, type = "response")
+
+#gráfico para visualizar os resultados
+df_plot_teste = data.frame(probabilidade = prob_test, 
+                           stroke_real = test$stroke)
+df_plot_teste = df_plot_teste[order(df_plot_teste$probabilidade),]
+df_plot_teste$rank = 1:nrow(df_plot_teste)
+ggplot(data=df_plot_teste, aes(x=rank, y=probabilidade)) + 
+  geom_point(aes(color=stroke_real), alpha=0.3, shape=4, stroke=1.1) + 
+  xlab("ID do Paciente") + 
+  ylab("Probabilidade prevista de ter um AVC") +
+  labs(color="A pessoa teve um AVC?")
+
+#Determinação do valor de corte
+roc_obj = roc(test$stroke, prob_test)
+coords(roc_obj, "best", ret = "threshold")
+
+#o valor de corte foi de 0.03491. Este valor tão baixo pode dever-se ao desbalanceamento de dados no dataset. Contudo, considerando que a proporção de pessoas com AVC no dataset é de cerca de 5%, podemos considerar que o valor é minimamente realista (o valor de corte vai depender também das amostras de observações dentro dos grupos de teste e de treino)
+
+previsao_classe = ifelse(prob_test > 0.03491, "Sim", "Não")
+previsao_classe = factor(previsao_classe, levels = c("Não", "Sim"))
+teste_real = factor(test$stroke, levels = c("Não", "Sim"))
+
+#Matriz de confusão
+confusionMatrix(data = previsao_classe, reference = teste_real, positive = "Sim")
+
+#accuracy = 0.6962
+#a accuracy não é muito alta, mas o modelo tem um bom desempenho naquele que é o seu principal objetivo, que é determinar as pessoas em risco de ter AVCs
+
+#sensibilidade = 0.94872
+#em cada 100 pessoas que realmente tiveram AVC, o modelo consegue detetar, em média, 95 delas
+
+#especificidade = 0.67895
+#a especificidade não é muito alta e pode levar a erros. Isto significa que, em cada 100 pessoas saudáveis, o modelo acerta, em média, cerca de 68, mas engana-se nas restantes 32
+
+```
+## Validação do modelo
+
+```{r Logistic Regression Model, echo = FALSE}
+#Variance Inflation Factor
+
+vif(modelo_logi2)
+
+#Como todos os valores são menores que 2, verificamos que não existe qualquer colinearidade relevante entre as variáveis no modelo.
+#O modelo é estatisticamente estável e não há risco de que relações artificiais entre variáveis distorçam os coeficientes.
+
+#Curvas ROC e AUC
+
+previ_modelo = predict(modelo_logi2, type = "response") #valores previstos pelo modelo
+roc_curve = roc(dados$stroke, prob)
+#Gráfico da curva ROC
+plot(roc_curve, print.auc = TRUE, col = "blue", main = "Curva ROC – Modelo de Previsão de AVCs")
+
+auc_modelo = auc(roc_curve)
+auc_modelo #0.8435
+ci(auc_modelo) #95% CI: 0.8229-0.8641 (DeLong)
+#O modelo tem boa capacidade discriminatória, ou seja, consegue separar adequadamente grupos com maior e menor risco de AVC.  AUC > 0.8
+
+#Teste ao significado
+
+library(lmtest)
+modelo_0=glm(stroke~1,family=binomial('logit'),data = dados1)
+lrtest(modelo_0, modelo_logi1)
+#Este resultado permite rejeitar a hipótese nula de que todos os coeficientes de regressão são iguais a zero, confirmando que o conjunto de variáveis independentes selecionado (idade, glicose, hipertensão, etc.) contribui significativamente para a predição da ocorrência de AVC em comparação com um modelo sem preditores. Em suma, o modelo é estatisticamente válido e é melhor a prever o risco de AVC do que um modelo que não tem dados do paciente e assume a probabilidade média da população.
+
+#Teste ao ajustamento
+
+hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi1)) #p-value=0.7391 > 0.05, logo não se rejeita H0, ou seja, o modelo aparenta ajustar-se bem aos dados. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
+
+
+```
+
+
+## Validação do modelo com K-fold cross-validation
+Aqui foi usado um n=10. Nesta abordagem, os dados são divididos em 10 grupos aleatórios, sendo que 1 é usado para teste e os restantes 9 para treino e isto é repetido 10 vezes até todos os grupos terem sido testados. Depois, é obtida uma média dessas 10 repetições. Este método é mais robusto, visto que elimina a possibilidade de os resultados terem sido bons apenas devido aso grupos de treino e de teste que foram escolhidos. Tendo isto em conta, a realização deste método de validação, mesmo após outro ter sido realizado anteriormente, serve para aumentar a certeza sobre as conclusões tiradas
+
+```{r k-fold cross- validation}
+
+metricas_validacao = function(data, lev = NULL, model = NULL) {
+  roc_obj = roc(data$obs, data$Sim, quiet = TRUE)
+  roc_val = as.numeric(roc_obj$auc)
+  corte = 0.03491
+  previsoes = ifelse(data$Sim > corte, "Sim", "Não")
+  previsoes = factor(previsoes, levels = lev)
+  stats = confusionMatrix(data = previsoes, reference = data$obs, positive = "Sim")
+  devolve = c(Accuracy = stats$overall["Accuracy"],
+              Sensitivity = stats$byClass["Sensitivity"],
+              Specificity = stats$byClass["Specificity"],
+              ROC = roc_val)
+  return(devolve)
+}
+
+#Modelo para determinar o accuracy
+control = trainControl(method = "cv",
+                       number=10,
+                       classProbs = TRUE,
+                       summaryFunction = metricas_validacao)
+
+modelo_final_valid = train(stroke ~ age + avg_glucose_level + hypertension,
+  data = dados1,
+  method = "glm", 
+  family = binomial(link='logit'),  
+  trControl = control,
+  metric="ROC")
+
+print(modelo_final_valid)
+
+```
+
+Este método de validação devolve:
+ - Accuracy = 0.6662749 -> o modelo tem uma accuracy aceitável, sendo que isto indica que este é capaz de acertar 66% dos casos com que se depara (incluindo pessoas com e sem AVC). Contudo, é preciso considerar que este valor está a ser diminuído pela maior suscetibilidade do modelo a falsos negativos (isto orresponde à taxa global de sucesso do modelo)
+ - Sensibilidade = 0.8838333 -> o modelo consegue cumprir o seu principal objetivo com elevado sucesso, sendo que, segundo este método, o modelo é capaz de acertar 88 pessoas em 100 com AVC
+ - Especificidade = 0.655144 -> o ponto negativo do modelo é que tem alguma taxa de erro no caso de falsos positivos, sendo que, em 100 pacientes sem AVC, o modelo só faz o diagnóstico certo para 65 pessoas, em média
+ - ROC = 0.8391581 -> prova a qualidade intrínseca do modelo e a sua capacidade de distinguir os grupos
+ 
+Os valores estão concordantes com os que foram obtidos anteriormente para o modelo por outro método de validação e, por isso, podemos afirmar que o modelo gerado seria de extrema utilidade na prevenção de AVCs, principalmente, pela capacidade que tem de prever a ocorrência de AVCs. Isto é de extrema utilidade na medicina preventina, dado que o custo de não diagnosticar um AVC (acontece menos com este modelo) supera largamente o custo de falso alarme

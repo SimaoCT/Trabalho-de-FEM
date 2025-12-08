@@ -852,7 +852,7 @@ lrtest(modelo_0, modelo_logi2)
 
 #Teste ao ajustamento
 
-hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi1)) #p-value=0.6349 > 0.05, logo não se rejeita H0, ou seja, o modelo aparenta ajustar-se bem aos dados. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
+hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi1)) #p-value=0.6696 > 0.05, logo não se rejeita H0, ou seja, o modelo aparenta ajustar-se bem aos dados. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
 
 
 ```
@@ -900,4 +900,5 @@ Este método de validação devolve:
  - ROC = 0.84321763 -> prova a qualidade intrínseca do modelo e a sua capacidade de distinguir os grupos
  
 Os valores estão concordantes com os que foram obtidos anteriormente para o modelo por outro método de validação e, por isso, podemos afirmar que o modelo gerado seria de extrema utilidade na prevenção de AVCs, principalmente, pela capacidade que tem de prever a ocorrência de AVCs. Isto é de extrema utilidade na medicina preventina, dado que o custo de não diagnosticar um AVC (acontece menos com este modelo) supera largamente o custo de falso alarme
+
 

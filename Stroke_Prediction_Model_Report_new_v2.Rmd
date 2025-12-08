@@ -836,7 +836,7 @@ vif(modelo_logi2)
 #Curvas ROC e AUC
 
 previ_modelo = predict(modelo_logi2, type = "response") #valores previstos pelo modelo
-roc_curve = roc(dados$stroke, prob)
+roc_curve = roc(dados1$stroke, prob)
 #Gráfico da curva ROC
 plot(roc_curve, print.auc = TRUE, col = "blue", main = "Curva ROC – Modelo de Previsão de AVCs")
 
@@ -902,4 +902,5 @@ Este método de validação devolve:
  - Especificidade = 0.655144 -> o ponto negativo do modelo é que tem alguma taxa de erro no caso de falsos positivos, sendo que, em 100 pacientes sem AVC, o modelo só faz o diagnóstico certo para 65 pessoas, em média
  - ROC = 0.8391581 -> prova a qualidade intrínseca do modelo e a sua capacidade de distinguir os grupos
  
+
 Os valores estão concordantes com os que foram obtidos anteriormente para o modelo por outro método de validação e, por isso, podemos afirmar que o modelo gerado seria de extrema utilidade na prevenção de AVCs, principalmente, pela capacidade que tem de prever a ocorrência de AVCs. Isto é de extrema utilidade na medicina preventina, dado que o custo de não diagnosticar um AVC (acontece menos com este modelo) supera largamente o custo de falso alarme

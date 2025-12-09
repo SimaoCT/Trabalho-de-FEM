@@ -10,6 +10,7 @@ output:
     df_print: paged
 fontsize: 11pt
 ---
+
 #Pacotes importados
 
 Nesta secção encontram-se os pacotes que foram necessários para a execução do código.
@@ -109,9 +110,10 @@ tabela_smoking = dados %>%
 tabela_smoking
 ```
 
-É possível verificar que apenas a variável Residence_type tem p-value>0.05 para ambos os casos, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre essa variável e as variáveis bmi e smoking_status. Posto isto, esta variável será excluída do modelo de imputação múltipla. Como a imputação é feita usando a função aregImpute, dentro das variáveis que são selecionadas para o modelo, o algoritmo é capaz de selecionar as que são mais significativas para a determinação de cada uma das variáveis e, considerando isso, fazer a previsão. Por outras palavras, esta função "ignora" automaticamente variáveis que não têm poder preditivo para a variável em questão
+É possível verificar que apenas a variável Residence_type tem p-value\>0.05 para ambos os casos, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre essa variável e as variáveis bmi e smoking_status. Posto isto, esta variável será excluída do modelo de imputação múltipla. Como a imputação é feita usando a função aregImpute, dentro das variáveis que são selecionadas para o modelo, o algoritmo é capaz de selecionar as que são mais significativas para a determinação de cada uma das variáveis e, considerando isso, fazer a previsão. Por outras palavras, esta função "ignora" automaticamente variáveis que não têm poder preditivo para a variável em questão
 
 ```{r Data imputation, echo=FALSE}
+set.seed(123)
 imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
 #n.impute é o número de imputações (5, recomendado por Harrell)
 # nk = número de "nós" (knots) para as curvas (splines). O padrão é 3, o que permite captar relações não lineares (curvas)
@@ -129,7 +131,10 @@ linhas_bmi_na = is.na(dados1$bmi)
 dados1$bmi[linhas_bmi_na] = bmi_imput_media
 
 #definir os níveis para smoking_status
-smokingLev = c("formerly smoked", "never smoked", "smokes")
+smokingLev = c("Nunca fumou", "Antigo Fumador", "Fumador")
+dados1$smoking_status <- factor(dados$smoking_status,
+                               levels = c("formerly smoked", "never smoked", "smokes"),
+                               labels = smokingLev)
 
 #no caso do smoking_status, como a variável qualitativa, é determinada a moda dos 5 valores obtidos por imputação para cada observação
 #função para calcular a moda
@@ -155,25 +160,25 @@ plot(imputar)
 
 #Criação de classes etárias com base na idade numérica
 dados1$Age_class = cut(dados1$age,
-                      breaks = c(-Inf, 39, 64, Inf),
-                      labels = c("Young Adults", "Middle-Age Adults", "Older Adults"))
+                      breaks = c(0,12,18,44,64,Inf),
+                      labels = c("Crianças", "Adolescentes", "Adultos joves", "Adultos de meia-idade","Idosos"))
 dados1$Age_class = factor(dados1$Age_class,
-                         levels = c("Young Adults", "Middle-Age Adults", "Older Adults"))
+                         levels = c("Crianças", "Adolescentes", "Adultos joves", "Adultos de meia-idade","Idosos"))
 
 #Criação de classes de IMC
 dados1$ClassBMI = cut(dados1$bmi,
                      breaks = c(-Inf, 18.5, 25, 30, 35, 40, Inf),
-                     labels = c("Underweight", "Healthy weight", "Overweight",
-                                "Obesity I", "Obesity II", "Obesity III"),
+                     labels = c("Abaixo do peso", "Peso normal", "Acima do peso",
+                                "Obesidade I", "Obesidade II", "Obesidade III"),
                      right = FALSE)
 
-dados1$ClassBMI = factor(dados1$ClassBMI,levels = c("Underweight", "Healthy weight", "Overweight",
-                                                   "Obesity I", "Obesity II", "Obesity III"),ordered = TRUE)
+dados1$ClassBMI = factor(dados1$ClassBMI,levels = c("Abaixo do peso", "Peso normal", "Acima do peso",
+                                "Obesidade I", "Obesidade II", "Obesidade III"),ordered = TRUE)
 
 #Criação de classes de glucose
 dados1$ClassGlu = cut(dados1$avg_glucose_level,
                       breaks = c(-Inf, 100, 126, Inf),
-                      labels = c("Normal", "Prediabetes", "Diabetes"),
+                      labels = c("Normal", "Pré-diabetes", "Diabetes"),
                       right = FALSE)
 #Os dados dos níveis médios de glucose podem ser enganadores se a análise não tiver sido feita em jejum
 
@@ -402,7 +407,7 @@ ggplot(dados1, aes(x = work_type, fill = stroke)) +
   scale_fill_manual(values = c("red3", "forestgreen"),
                     name = "Presença de AVC")
 
-#Tabela comparattiva da prevalência de AVCs entre pessoas com diferentes tipos de trabalho
+#Tabela comparativa da prevalência de AVCs entre pessoas com diferentes tipos de trabalho
 
 tbl_val=table(dados1$stroke,dados1$work_type)
 df_tbl=as.data.frame(tbl_val)
@@ -561,7 +566,6 @@ par(mfrow=c(1,1))
 
 Esta secção corresponde ao desenvolvimento do modelo de regressão linear, cujo objetivo é determinar o IMC de uma pessoa considerando outras variáveis do dataset.
 
-
 ```{r Linear Regression Model, echo=FALSE, fig.align='center', results='asis', out.width="100%"}
 
 #Determinação das variáveis relevantes para a determinação do IMC
@@ -571,8 +575,8 @@ tabela_bmi = dados1 %>%
   tbl_uvregression(method = lm,
                    y = bmi,
                    pvalue_fun = ~style_pvalue(.x, digits = 3)) %>%
-  add_global_p() %>%   #para as variáveis qualitativas também terem um p-value
-  bold_p()
+  add_global_p()  #para as variáveis qualitativas também terem um p-value
+  
 
 tabela_bmi
 
@@ -580,11 +584,11 @@ tabela_bmi
 
 H0: Não existe associação estatisticamente significativa entre o IMC e a variável em questão
 H1: Existe associação estatisticamente significativa entre o IMC e a variável em questão
-Como p-value>0.05 apenas para o caso das variáveis gender e Residence_type, aceitamos a hipótese H0 nestes dois casos, ou seja, aceitamos que não existe associação significativa entre estas variáveis e a determinação do IMC de uma pessoa
+Como p-value\>0.25 apenas para o caso da variável Residence_type, aceitamos a hipótese H0 nestes dois casos, ou seja, aceitamos que não existe associação significativa entre esta variável e a determinação do IMC de uma pessoa
 
 ```{r Linear Regression Model (cont.), echo=FALSE, fig.align='center', results='asis', out.width="100%"}
 #Modelo do BMI com diferentes variáveis
-modelo_BMI=lm(bmi~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados1)
+modelo_BMI=lm(bmi~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke+gender,data=dados1)
 summary(modelo_BMI)
 
 #Avaliação do pressuposto de normalidade dos resíduos
@@ -592,7 +596,7 @@ qqnorm(residuals(modelo_BMI),pch=20,main="QQ-plot: Resíduos")
 qqline(residuals(modelo_BMI),col="red",lwd=3)
 # o gráfico aponta para a rejeição da hipótese de normalidade dos resíduos. Como a distribuição gráfica no QQ-plot era semelhante a uma função logarítmica, aplicou-se o logaritmo ao BMI, para verificar se, desta forma, os resíduos já seguiam uma distribuição normal
 
-modelo_log=lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados1)
+modelo_log=lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke+gender,data=dados1)
 qqnorm(residuals(modelo_log),pch=20,main="QQ-plot: Resíduos")
 qqline(residuals(modelo_log),col="red",lwd=3)
 #a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
@@ -611,7 +615,7 @@ vif(modelo_log)
 #como work_type e age têm valores maiores que 2, podemos concluir que ambas as variáveis correspondem a casos de multicolinearidade e, por isso, devemos excluir variáveis do modelo para reduzir os valroes de todas as variáveis para valores menores que 2. Contudo, como a variável idade está fortemente relacionada com o IMC (visto que quantos mais velhas as pessoas, mais os hábitos de sedentarismo e maior o IMC), foi testado um modelo apenas excluindo o work_type. É importante mencionar que a idade está diretamente relacionada o estatuto de trabalhador de cada pessoa, o que justifica os elevados VIFs para ambas as variáveis
 
 #Modelo sem work_type
-modelo_log1=lm(log(bmi)~age+hypertension+heart_disease+ever_married+avg_glucose_level+smoking_status+stroke,data=dados1)
+modelo_log1=lm(log(bmi)~age+hypertension+heart_disease+ever_married+avg_glucose_level+smoking_status+stroke+gender,data=dados1)
 qqnorm(residuals(modelo_log1),pch=20,main="QQ-plot: Resíduos")
 qqline(residuals(modelo_log1),col="red",lwd=3)
 #a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
@@ -625,7 +629,7 @@ vif(modelo_log1)
 #a idade continua com um vif superior a 2, mas devido à sua elevada importância para a determinação do IMC, foi excluída a variável com maior vif de seguida, ou seja, a variável que considera o estado civil, algo que, mais uma vez, está fortemente relacionado com a idade, visto que é pouco frequente haver crianças casadas
 
 #Modelo sem work_type e sem ever_married
-modelo_log2=lm(log(bmi)~age+hypertension+heart_disease+avg_glucose_level+smoking_status+stroke,data=dados1)
+modelo_log2=lm(log(bmi)~age+hypertension+heart_disease+avg_glucose_level+smoking_status+stroke+gender,data=dados1)
 qqnorm(residuals(modelo_log2),pch=20,main="QQ-plot: Resíduos")
 qqline(residuals(modelo_log2),col="red",lwd=3)
 #a o QQ-plot demonstra que apenas nas extremidades do gráfico é que há alguma dispersão de pontos em relação à distribuição normal e, por isso, é possível que os resíduos sigam uma distribuição normal
@@ -645,13 +649,13 @@ vif(modelo_log2)
 ```{r Quality check, echo = FALSE}
 
 #Coeficientes de determinação
-summary(modelo_log)$r.squared #R^2=0.3204
-summary(modelo_log)$adj.r.squared #R^2=0.3191
-summary(modelo_log1)$r.squared #R^2=0.2105
-summary(modelo_log1)$adj.r.squared #R^2=0.2093
-summary(modelo_log2)$r.squared #R^2=0.1865
-summary(modelo_log2)$adj.r.squared #R^2=0.1854
-#é possível verificar que o R^2 diminuiu drasticamente com a exclusão de variáveis, por isso, é preferível ter alguma multicolinearidade no modelo e que explica uma maior quantidade de dados do que um modelo sem multicolinearidade, mas que não consegue explicar quase nada
+summary(modelo_log)$r.squared #R^2=0.3199
+summary(modelo_log)$adj.r.squared #R^2=0.3185
+summary(modelo_log1)$r.squared #R^2=0.2099
+summary(modelo_log1)$adj.r.squared #R^2=0.2085
+summary(modelo_log2)$r.squared #R^2=0.1864
+summary(modelo_log2)$adj.r.squared #R^2=0.1851
+#é possível verificar que o R^2 diminuiu com a exclusão de variáveis, por isso, é preferível ter alguma multicolinearidade no modelo e que explica uma maior quantidade de dados do que um modelo sem multicolinearidade, mas que não consegue explicar quase nada
 
 #para tentar aumentar um bocado o valor de R^2, foram excluídos valores 
 
@@ -677,7 +681,7 @@ sd(dados1$bmi)
 summary(modelo_log)
 summary(modelo_log1)
 summary(modelo_log2)
-#todos os p-values são inferiores a 0.05, porém, como o dataset é demasiado grande, os p-values tornam-se pequenos facilmente
+#todos os p-values do modelo são inferiores a 0.05, porém, como o dataset é demasiado grande, os p-values tornam-se pequenos facilmente
 
 #método de seleção automática de variáveis
 
@@ -709,7 +713,7 @@ table(influentes)
 ## Modelo de regressão linear dos dados sem imputação
 
 ```{r Modelos com imput, echo=FALSE}
-modelo_sem_imp = lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke,data=dados)
+modelo_sem_imp = lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke+gender,data=dados)
 
 summary(modelo_sem_imp)
 
@@ -735,11 +739,12 @@ tabela1 <- dados1 %>%
 
 tabela1
 ```
-Para os casos em que p-value<0.05, rejeitamos a hipótese nula, sendo possível concluir que existe uma associação estatisticamente significativa. Posto isto, podemos concluir que as variáveis age, hypertension, heart_disease, ever_married, work_type, avg_glucose_level, bmi, smoking_status, Age_class, ClassBMI e ClassGlu têm uma associação estatisticamente significativa com a ocorrência de AVCs, segundo os testes de hipóteses realizados.
 
-Para os casos em que p-value>0.05, não podemos rejeitar a hipótese nula e, por isso, não existem evidências estatísticas de associação suficientes. Posto isto, as variáveis gender e Residence_type não apresentam evidências estatísticas suficientes para estabelecer uma associação significativa entre estas variáveis e a ocorrência de AVCs, segundo os testes realizados.
+Para os casos em que p-value\<0.25, rejeitamos a hipótese nula, sendo possível concluir que existe uma associação estatisticamente significativa. Posto isto, podemos concluir que as variáveis age, hypertension, heart_disease, ever_married, work_type, avg_glucose_level, bmi, smoking_status, Age_class, ClassBMI e ClassGlu têm uma associação estatisticamente significativa com a ocorrência de AVCs, segundo os testes de hipóteses realizados.
 
-Variáveis avaliadas com o Teste de Wilcoxon rank sum test: age, avg_glucose_level e bmi (são variáveis numéricas e nenhuma segue uma distribuição normal)
+Para os casos em que p-value\>0.25, não podemos rejeitar a hipótese nula e, por isso, não existem evidências estatísticas de associação suficientes. Posto isto, as variáveis gender e Residence_type não apresentam evidências estatísticas suficientes para estabelecer uma associação significativa entre estas variáveis e a ocorrência de AVCs, segundo os testes realizados.
+
+Variáveis avaliadas com o Teste de Wilcoxon rank sum /Teste de Wilcoxon-Mann-Whitney: age, avg_glucose_level e bmi (são variáveis numéricas e nenhuma segue uma distribuição normal)
 
 Variáveis avaliadas com o Teste Qui-quadrado de Pearson: as restantes (variáveis qualitativas com várias observações em todas as categorias)
 
@@ -754,18 +759,43 @@ summary(modelo_logi1)
 
 OR_table = broom::tidy(modelo_logi1, exponentiate = TRUE, conf.int = TRUE)
 OR_table
-#Com base nos p-values < 0.05 verificamos que as variáveis significativas são a age, hypertension = yes, avg_glucose_level
+#Com base nos p-values < 0.25 verificamos que as variáveis significativas são a age, work_type="Trabalha por conta própria", avg_glucose_level, hypertension, heart_disease="Sim", smoking_status=Antigo fumador"
 
-# Age -> A cada ano o risco de sofrer AVC aumenta ~7.5%
+#A hipertensão é indicada como uma das principais causas de AVC na literatura e, por isso, deve ser reavaliada
+
+#As restantes variáveis não significativas apesar de serem clinicamente relevantes, neste conjunto de dados, não apresentaram efeito estatisticamente significativo, possivelmente devido à variabilidade alta, multicolinearidade, ou baixa frequência dos casos positivos (AVC).
+
+# age -> A cada ano o risco de sofrer AVC aumenta ~7.8%
 #A idade é o fator de risco mais forte e estatisticamente mais robusto do modelo.
-# hypertension -> Hipertensos têm ~40% mais risco
-# avg_glucose_level -> Cada aumento de 1 unidade no nível médio de glucose aumenta o risco de AVC em 0.40%.
+# avg_glucose_level -> Cada aumento de 1 unidade no nível médio de glucose aumenta o risco de AVC em 0.41%.
+# hypertension -> pessoas com hipertensão têm 40% mais probabilidade de ter AVC
 
-#As restantes variáveis não significativas apesar de serem clinicamente relevantes, neste conjunto de dados, não apresentaram efeito estatisticamente significativo, possivelmente devido a variabilidade alta, multicolinearidade, ou baixa frequência dos casos positivos (AVC).
+#como apenas uma das categorias de work_type, de heart_disease e de smoking_status é significativa, estas devem ser reavaliadas (verifica-se se é uma variável de confundimento, sendo que para isso retira-se a variável do modelo e verifica-se se os coeficentes das restantes variáveis mudaram mais que 15 a 20%. Se isso acontecer, a variável é mantida no modelo)
 
-#Posto isto foi criado um segundo modelo apenas com as variáveis significativas (é possível que apesar de não variar muito o AIC deste modelo é ligeiramente menor que o de modelo_logi1: diferença de 0.4)
+modelo_logi1.1 = glm(stroke ~ age + avg_glucose_level + hypertension + smoking_status, 
+                   data = dados1, family = binomial('logit'))
+summary(modelo_logi1.1)
+modelo_logi1.2 = glm(stroke ~ age + avg_glucose_level + hypertension + heart_disease, 
+                   data = dados1, family = binomial('logit'))
+summary(modelo_logi1.2)
+modelo_logi1.3 = glm(stroke ~ age + avg_glucose_level + hypertension + work_type, 
+                   data = dados1, family = binomial('logit'))
+summary(modelo_logi1.3)
+modelo_logi1.1 = glm(stroke ~ age + avg_glucose_level + hypertension + smoking_status, 
+                   data = dados1, family = binomial('logit'))
+summary(modelo_logi1.1)
+modelo_logi1.2 = glm(stroke ~ age + avg_glucose_level, 
+                   data = dados1, family = binomial('logit'))
+summary(modelo_logi1.2)
+
+#como a variação é menor que 15 a 20% em todos os casos, as variáveis são excluídas
+
+#modelo final
 modelo_logi2 = glm(stroke ~ age + avg_glucose_level + hypertension,
                    data = dados1, family = binomial('logit'))
+summary(modelo_logi2)
+
+#Posto isto foi criado um segundo modelo apenas com as variáveis significativas (é possível que apesar de não variar muito o AIC deste modelo é ligeiramente menor que o de modelo_logi1: diferença de 0.4)
 ```
 
 ## Treino e teste do modelo
@@ -811,16 +841,17 @@ teste_real = factor(test$stroke, levels = c("Não", "Sim"))
 #Matriz de confusão
 confusionMatrix(data = previsao_classe, reference = teste_real, positive = "Sim")
 
-#accuracy = 0.666
+#accuracy = 0.6738
 #a accuracy não é muito alta, mas o modelo tem um bom desempenho naquele que é o seu principal objetivo, que é determinar as pessoas em risco de ter AVCs
 
 #sensibilidade = 0.89796
 #em cada 100 pessoas que realmente tiveram AVC, o modelo consegue detetar, em média, 90 delas
 
-#especificidade = 0.65432
+#especificidade = 0.66255
 #a especificidade não é muito alta e pode levar a erros. Isto significa que, em cada 100 pessoas saudáveis, o modelo acerta, em média, cerca de 65, mas engana-se nas restantes 35
 
 ```
+
 ## Validação do modelo
 
 ```{r Logistic Regression Model, echo = FALSE}
@@ -834,7 +865,7 @@ vif(modelo_logi2)
 #Curvas ROC e AUC
 
 previ_modelo = predict(modelo_logi2, type = "response") #valores previstos pelo modelo
-roc_curve = roc(dados$stroke, previ_modelo)
+roc_curve = roc(dados1$stroke, previ_modelo)
 #Gráfico da curva ROC
 plot(roc_curve, print.auc = TRUE, col = "blue", main = "Curva ROC – Modelo de Previsão de AVCs")
 
@@ -843,7 +874,7 @@ auc_modelo #0.8435
 ci(auc_modelo) #95% CI: 0.8229-0.8641 (DeLong)
 #O modelo tem boa capacidade discriminatória, ou seja, consegue separar adequadamente grupos com maior e menor risco de AVC.  AUC > 0.8
 
-#Teste ao significado
+#Teste da razão de verossimilhança
 
 library(lmtest)
 modelo_0=glm(stroke~1,family=binomial('logit'),data = dados1)
@@ -852,13 +883,13 @@ lrtest(modelo_0, modelo_logi2)
 
 #Teste ao ajustamento
 
-hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi1)) #p-value=0.6696 > 0.05, logo não se rejeita H0, ou seja, o modelo aparenta ajustar-se bem aos dados. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
+hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi2)) #p-value=0.652 > 0.05, logo não se rejeita H0, ou seja, o modelo aparenta ajustar-se bem aos dados. No entanto este resultado, deve interpretado com cautela devido ao grande tamanho da amostra (n=5110), uma vez que o teste é conhecido por ser excessivamente sensível a pequenas discrepâncias em grandes datasets. Apesar da falta de calibração perfeita, a capacidade discriminativa do modelo deve ser avaliada prioritariamente pela curva ROC/AUC.
 
 
 ```
 
+## Validação do modelo com 10-fold cross-validation
 
-## Validação do modelo com K-fold cross-validation
 Aqui foi usado um n=10. Nesta abordagem, os dados são divididos em 10 grupos aleatórios, sendo que 1 é usado para teste e os restantes 9 para treino e isto é repetido 10 vezes até todos os grupos terem sido testados. Depois, é obtida uma média dessas 10 repetições. Este método é mais robusto, visto que elimina a possibilidade de os resultados terem sido bons apenas devido aso grupos de treino e de teste que foram escolhidos. Tendo isto em conta, a realização deste método de validação, mesmo após outro ter sido realizado anteriormente, serve para aumentar a certeza sobre as conclusões tiradas
 
 ```{r k-fold cross- validation}
@@ -893,12 +924,6 @@ print(modelo_final_valid)
 
 ```
 
-Este método de validação devolve:
- - Accuracy = 0.6737178 -> o modelo tem uma accuracy aceitável, sendo que isto indica que este é capaz de acertar 67% dos casos com que se depara (incluindo pessoas com e sem AVC). Contudo, é preciso considerar que este valor está a ser diminuído pela maior suscetibilidade do modelo a falsos negativos (isto orresponde à taxa global de sucesso do modelo)
- - Sensibilidade = 0.8753333 -> o modelo consegue cumprir o seu principal objetivo com elevado sucesso, sendo que, segundo este método, o modelo é capaz de acertar 88 pessoas em 100 com AVC
- - Especificidade = 0.6633745 -> o ponto negativo do modelo é que tem alguma taxa de erro no caso de falsos positivos, sendo que, em 100 pacientes sem AVC, o modelo só faz o diagnóstico certo para 65 pessoas, em média
- - ROC = 0.84321763 -> prova a qualidade intrínseca do modelo e a sua capacidade de distinguir os grupos
- 
+Este método de validação devolve: - Accuracy = 0.6737178 -\> o modelo tem uma accuracy aceitável, sendo que isto indica que este é capaz de acertar 67% dos casos com que se depara (incluindo pessoas com e sem AVC). Contudo, é preciso considerar que este valor está a ser diminuído pela maior suscetibilidade do modelo a falsos negativos (isto orresponde à taxa global de sucesso do modelo) - Sensibilidade = 0.8753333 -\> o modelo consegue cumprir o seu principal objetivo com elevado sucesso, sendo que, segundo este método, o modelo é capaz de acertar 88 pessoas em 100 com AVC - Especificidade = 0.6633745 -\> o ponto negativo do modelo é que tem alguma taxa de erro no caso de falsos positivos, sendo que, em 100 pacientes sem AVC, o modelo só faz o diagnóstico certo para 65 pessoas, em média - ROC = 0.84321763 -\> prova a qualidade intrínseca do modelo e a sua capacidade de distinguir os grupos
+
 Os valores estão concordantes com os que foram obtidos anteriormente para o modelo por outro método de validação e, por isso, podemos afirmar que o modelo gerado seria de extrema utilidade na prevenção de AVCs, principalmente, pela capacidade que tem de prever a ocorrência de AVCs. Isto é de extrema utilidade na medicina preventina, dado que o custo de não diagnosticar um AVC (acontece menos com este modelo) supera largamente o custo de falso alarme
-
-

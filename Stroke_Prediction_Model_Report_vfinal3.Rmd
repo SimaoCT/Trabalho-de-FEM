@@ -687,7 +687,7 @@ Esta secção corresponde ao desenvolvimento do modelo de regressão linear, cuj
 #Determinação das variáveis relevantes para a determinação do IMC
 
 tabela_bmi = dados1 %>%
-  select(-ClassBMI) %>%
+  select(-c(Age_class, ClassGlu, ClassBMI)) %>%
   tbl_uvregression(method = lm,
                    y = bmi,
                    pvalue_fun = ~style_pvalue(.x, digits = 3)) %>%
@@ -846,6 +846,7 @@ Esta secção corresponde ao desenvolvimento do modelo de regressão logístico,
 #H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
 
 tabela1 <- dados1 %>%
+  select(-c(Age_class, ClassGlu, ClassBMI)) %>%
   tbl_summary(by = stroke,
     statistic = list(all_continuous() ~ "{mean} ({sd})", 
                      all_categorical() ~ "{n} ({p}%)"),
@@ -891,7 +892,7 @@ modelo_logi1.1 = glm(stroke ~ age + avg_glucose_level + hypertension + heart_dis
 summary(modelo_logi1.1)
 modelo_logi1.2 = glm(stroke ~ age + avg_glucose_level + hypertension + heart_disease + work_type, 
                    data = dados1, family = binomial('logit'))
-summary(modelo_logi1.3)
+summary(modelo_logi1.2)
 modelo_logi1.3 = glm(stroke ~ age + avg_glucose_level + hypertension + heart_disease, 
                    data = dados1, family = binomial('logit'))
 summary(modelo_logi1.3)

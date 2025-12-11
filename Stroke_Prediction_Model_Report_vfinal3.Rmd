@@ -15,7 +15,7 @@ fontsize: 11pt
 
 Nesta secção encontram-se os pacotes que foram necessários para a execução do código.
 
-```{r Libraries and Data Cleaning, echo=FALSE, include=FALSE}
+```{r Libraries and Data Cleaning}
 ############################
 # Load necessary libraries #
 ############################
@@ -50,7 +50,7 @@ library(caret)
 
 O primeiro passo foi a importação do dataset e o processamento dos dados, inclusive a transformação das variáveis em fatores, a eliminação de possíveis NAs, etc.
 
-```{r Data Processing, echo = FALSE, include = FALSE}
+```{r Data Processing}
 #Importação e Limpeza dos dados
 dados_unsort <- read_csv("healthcare-dataset-stroke-data.csv", na = c("","NA","N/A", "Unknown")) #substitui as variáveis sem informação por NA
 dados_unsort$id = as.numeric(dados_unsort$id)
@@ -88,7 +88,7 @@ dados = dados[,c(2:12)]
 
 Antes de fazer a imputação dos dados, é necessário determinar quais as variáveis que estão significativamente associadas às variáveis nas quais se fará a imputação (bmi e smoking_status)
 
-```{r Variables impact analysis, echo=FALSE}
+```{r Variables impact analysis, fig.align='center', results='asis', out.width="70%"}
 #H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
 #H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
 #para esta tabela é preciso instalar o seguinte package: install.packages("broom.helpers") e install.packages("parameters")
@@ -115,7 +115,7 @@ tabela_smoking
 
 É possível verificar que apenas a variável Residence_type tem p-valuec>0.05 para ambos os casos, indicando que não devemos rejeitar H0, ou seja, não podemos rejeitar que não há associação estatisticamente significativa entre essa variável e as variáveis bmi e smoking_status. Posto isto, esta variável será excluída do modelo de imputação múltipla. Como a imputação é feita usando a função aregImpute, dentro das variáveis que são selecionadas para o modelo, o algoritmo é capaz de selecionar as que são mais significativas para a determinação de cada uma das variáveis e, considerando isso, fazer a previsão. Por outras palavras, esta função "ignora" automaticamente variáveis que não têm poder preditivo para a variável em questão
 
-```{r Data imputation, echo=FALSE}
+```{r Data imputation, fig.align='center', results='asis', out.width="70%"}
 set.seed(123)
 imputar = aregImpute(formula = ~stroke + age + hypertension + heart_disease + ever_married + avg_glucose_level + bmi + smoking_status + gender + work_type, data = dados, n.impute = 5, nk = 3)
 #n.impute é o número de imputações (5, recomendado por Harrell)
@@ -191,7 +191,7 @@ dados1$ClassGlu = cut(dados1$avg_glucose_level,
 
 ## Qualitative Variables
 
-```{r Qualitative variables plots and frequence tables, echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+```{r Qualitative variables plots and frequence tables, fig.align='center', results='asis', out.width="70%"}
 
 #Distribuição das pessoas com AVC por cada sexo
 
@@ -593,7 +593,7 @@ tabela_categoricas_gt = as_gt(tabela_categoricas)
 
 ## Quantitative Variables
 
-```{r Quantitative variables plots, echo=FALSE, fig.align='center', results='asis', out.width="70%"}
+```{r Quantitative variables plots, fig.align='center', results='asis', out.width="70%"}
 
 #Distribuição da prevalência de AVCs segundo níveis médios de glucose reportados
 
@@ -657,7 +657,7 @@ ggplot(dados1, aes(x = stroke, y = bmi, fill = stroke)) +
     )
 ```
 
-```{r Avaliação da normalidade das variáveis contínuas, echo=False, include=False}
+```{r Avaliação da normalidade das variáveis contínuas, fig.align='center', results='asis', out.width="70%"}
 par(mfrow=c(1,3))
 
 #idade
@@ -682,7 +682,7 @@ par(mfrow=c(1,1))
 
 Esta secção corresponde ao desenvolvimento do modelo de regressão linear, cujo objetivo é determinar o IMC de uma pessoa considerando outras variáveis do dataset.
 
-```{r Linear Regression Model, echo=FALSE, fig.align='center', results='asis', out.width="100%"}
+```{r Linear Regression Model, , fig.align='center', results='asis', out.width="70%"}
 
 #Determinação das variáveis relevantes para a determinação do IMC
 
@@ -702,7 +702,7 @@ H0: Não existe associação estatisticamente significativa entre o IMC e a vari
 H1: Existe associação estatisticamente significativa entre o IMC e a variável em questão
 Como p-value>0.25 apenas para o caso da variável Residence_type, aceitamos a hipótese H0 nestes dois casos, ou seja, aceitamos que não existe associação significativa entre esta variável e a determinação do IMC de uma pessoa
 
-```{r Linear Regression Model (cont.), echo=FALSE, fig.align='center', results='asis', out.width="100%"}
+```{r Linear Regression Model (cont.), , fig.align='center', results='asis', out.width="70%"}
 #Modelo do BMI com diferentes variáveis
 modelo_BMI=lm(bmi~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke+gender,data=dados1)
 summary(modelo_BMI)
@@ -762,7 +762,7 @@ vif(modelo_log2)
 
 ## Avaliação da qualidade do modelo
 
-```{r Quality check, echo = FALSE}
+```{r Quality check, fig.align='center', results='asis', out.width="70%"}
 
 #Coeficientes de determinação
 summary(modelo_log)$r.squared #R^2=0.3199
@@ -828,7 +828,7 @@ table(influentes)
 
 ## Modelo de regressão linear dos dados sem imputação
 
-```{r Modelos com imput, echo=FALSE}
+```{r Modelos com imput, fig.align='center', results='asis', out.width="70%"}
 modelo_sem_imp = lm(log(bmi)~age+hypertension+heart_disease+ever_married+work_type+avg_glucose_level+smoking_status+stroke+gender,data=dados)
 
 summary(modelo_sem_imp)
@@ -840,7 +840,7 @@ summary(modelo_sem_imp)
 
 Esta secção corresponde ao desenvolvimento do modelo de regressão logístico, cujo objetivo é determinar a probabilidade de um paciente ter um AVC.
 
-```{r}
+```{r Variable Selection, fig.align='center', results='asis', out.width="70%"}
 #Determinação das variáveis relevantes para a determinação do AVC
 #H0: Não existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
 #H1: Existe uma associação significativa entre a ocorrência de AVCs e a variável em estudo.
@@ -865,7 +865,7 @@ Variáveis avaliadas com o Teste de Wilcoxon rank sum /Teste de Wilcoxon-Mann-Wh
 
 Variáveis avaliadas com o Teste Qui-quadrado de Pearson: as restantes (variáveis qualitativas com várias observações em todas as categorias)
 
-```{r Logistic Regression Model, echo = FALSE}
+```{r Logistic Regression Model, fig.align='center', results='asis', out.width="70%"}
 modelo_logi1 = glm(stroke ~ age + bmi + avg_glucose_level +
                 hypertension + heart_disease +
                 ever_married + work_type +
@@ -932,7 +932,7 @@ ggplot(OR_plot, aes(x = term, y = estimate)) +
 
 ## Treino e teste do modelo
 
-```{r}
+```{r Model training and testing, fig.align='center', results='asis', out.width="70%"}
 
 #o dataset é divido em treino e em teste
 set.seed(123)
@@ -986,7 +986,7 @@ confusionMatrix(data = previsao_classe, reference = teste_real, positive = "Sim"
 
 ## Validação do modelo
 
-```{r Logistic Regression Model (cont.), echo = FALSE}
+```{r Validation metrics, fig.align='center', results='asis', out.width="70%"}
 #Variance Inflation Factor
 
 vif(modelo_logi2)
@@ -1024,7 +1024,7 @@ hoslem.test(as.numeric(dados1$stroke)-1,fitted(modelo_logi2)) #p-value=0.7141 > 
 
 Aqui foi usado um n=10. Nesta abordagem, os dados são baralhados e divididos em 10 grupos aleatórios, sendo que 1 é usado para teste e os restantes 9 para treino e isto é repetido 10 vezes até todos os grupos terem sido testados. Depois, é obtida uma média dessas 10 repetições. Este método é mais robusto, visto que elimina a possibilidade de os resultados terem sido bons apenas devido aos grupos de treino e de teste que foram escolhidos. Tendo isto em conta, a realização deste método de validação, mesmo após outro ter sido realizado anteriormente, serve para aumentar a certeza sobre as conclusões tiradas
 
-```{r 10-fold cross-validation, echo = FALSE}
+```{r 10-fold cross-validation, fig.align='center', results='asis', out.width="70%"}
 
 metricas_validacao = function(data, lev = NULL, model = NULL) {
   roc_obj = roc(data$obs, data$Sim, quiet = TRUE)

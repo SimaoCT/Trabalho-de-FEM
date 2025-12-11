@@ -1,6 +1,6 @@
 ---
 title: "Stroke Prediction Model Report"
-author: "Simão Tavares | João Cordeiro | Tomás Matias | Rodrigo Curto"
+author: "Simão Tavares (113256) | João Cordeiro (114932) | Tomás Matias (108994) | Rodrigo Curto (114458)"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -986,7 +986,7 @@ confusionMatrix(data = previsao_classe, reference = teste_real, positive = "Sim"
 
 ## Validação do modelo
 
-```{r Logistic Regression Model, echo = FALSE}
+```{r Logistic Regression Model (cont.), echo = FALSE}
 #Variance Inflation Factor
 
 vif(modelo_logi2)
